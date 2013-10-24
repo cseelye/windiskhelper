@@ -99,10 +99,18 @@ namespace windiskhelper
 
             if (Args["add_portal"] != null)
             {
-                Logger.Info("Adding portal '" + Args["portal_address"] + "' with CHAP user '" + Args["chap_user"] + "' and secret '" + Args["chap_secret"] + "'");
                 try
                 {
-                    msinit.AddTargetPortal(Args["portal_address"], Args["chap_user"], Args["chap_secret"]);
+                    if (Args["chap_user"] != null && Args["chap_secret"] != null)
+                    {
+                        Logger.Info("Adding portal '" + Args["portal_address"] + "' with CHAP user '" + Args["chap_user"] + "' and secret '" + Args["chap_secret"] + "'");
+                        msinit.AddTargetPortal(Args["portal_address"], Args["chap_user"], Args["chap_secret"]);
+                    }
+                    else
+                    {
+                        Logger.Info("Adding portal '" + Args["portal_address"] + "'");
+                        msinit.AddTargetPortal(Args["portal_address"]);
+                    }
                     Logger.Info("Successfully added portal.");
                     Environment.Exit(EXIT_SUCCESS);
                 }
@@ -225,17 +233,33 @@ namespace windiskhelper
                 {
                     if (Args["portal_address"] != null)
                     {
-                        Logger.Info("Logging in to targets on portal '" + Args["portal_address"] + "' with CHAP user '" + Args["chap_user"] + "' and secret '" + Args["chap_secret"] + "'");
-                        msinit.LoginTargetsOnPortal(Args["portal_address"], Args["chap_user"], Args["chap_secret"], persistent);
-                        
+                        if (Args["chap_user"] != null && Args["chap_secret"] != null)
+                        {
+                            Logger.Info("Logging in to targets on portal '" + Args["portal_address"] + "' with CHAP user '" + Args["chap_user"] + "' and secret '" + Args["chap_secret"] + "'");
+                            msinit.LoginTargetsOnPortal(Args["portal_address"], Args["chap_user"], Args["chap_secret"], persistent);
+                        }
+                        else
+                        {
+                            Logger.Info("Logging in to targets on portal '" + Args["portal_address"] + "'");
+                            msinit.LoginTargetsOnPortal(Args["portal_address"], persistent);
+                        }
+
                         Logger.Info("Onlining/signaturing all iSCSI disks");
                         msinit.OnlineAllDisks();
                     }
                     else
                     {
-                        Logger.Info("Logging in to all targets with CHAP user '" + Args["chap_user"] + "' and secret '" + Args["chap_secret"] + "'");
-                        msinit.LoginAllTargets(Args["chap_user"], Args["chap_secret"], persistent);
-
+                        if (Args["chap_user"] != null && Args["chap_secret"] != null)
+                        {
+                            Logger.Info("Logging in to all targets with CHAP user '" + Args["chap_user"] + "' and secret '" + Args["chap_secret"] + "'");
+                            msinit.LoginAllTargets(Args["chap_user"], Args["chap_secret"], persistent);
+                        }
+                        else
+                        {
+                            Logger.Info("Logging in to all targets");
+                            msinit.LoginAllTargets(persistent);
+                        }
+                        
                         Logger.Info("Onlining/signaturing all iSCSI disks");
                         msinit.OnlineAllDisks();
                     }
@@ -480,6 +504,22 @@ namespace windiskhelper
                 }
                 catch (MicrosoftInitiator.IscsiException) { }
             }
+            else if (Args["dump_disk_info"] != null)
+            {
+                try
+                {
+                    msinit.DebugShowAllDiskDevices();
+                }
+                catch (MicrosoftInitiator.IscsiException) { }
+            }
+            else if (Args["dump_vds_prov_info"] != null)
+            {
+                try
+                {
+                    msinit.DebugShowAllVDSProviders();
+                }
+                catch (MicrosoftInitiator.IscsiException) { }
+            }
 
             Environment.Exit(EXIT_SUCCESS);
         }
@@ -500,7 +540,8 @@ namespace windiskhelper
             Console.WriteLine();
             Console.WriteLine("Verbs:");
             Console.WriteLine("  --add_portal          add a target discovery portal to the initiator. Requires");
-            Console.WriteLine("                        portal_address, chap_user, chap_secret");
+            Console.WriteLine("                        portal_address, and requires chap_user, chap_secret if");
+            Console.WriteLine("                        using CHAP");
             Console.WriteLine("  --remove_portal       Remove a discovery portal from the initiator. Requires");
             Console.WriteLine("                        portal_address");
             Console.WriteLine("  --list_portals        Display a list of the target portals");
@@ -508,7 +549,8 @@ namespace windiskhelper
             Console.WriteLine("                        portal_address");
             Console.WriteLine("  --refresh_targets     Refresh the list of discovered targets.");
             Console.WriteLine("  --login_targets       Log in to discovered targets. Requires chap_user,");
-            Console.WriteLine("                        chap_secret. Optionally include portal_address");
+            Console.WriteLine("                        chap_secret if using CHAP. Optionally include");
+            Console.WriteLine("                        portal_address");
             Console.WriteLine("  --logout_targets      Log out of connected targets. Optionally include");
             Console.WriteLine("                        portal_address");
             Console.WriteLine("  --list_disks          Display a list of targets and their corresponding");
@@ -522,6 +564,10 @@ namespace windiskhelper
             Console.WriteLine("                        logged in targets. Optionally include portal_address,");
             Console.WriteLine("                        relabel, force_mountpoints");
             Console.WriteLine("  --unmount_disks       Remove mount points and drive letters from logged in targets");
+            Console.WriteLine("  --dump_disk_info      Print out as much information as possible about the connected");
+            Console.WriteLine("                        disk devices on the system");
+            Console.WriteLine("  --dump_vds_prov_info  Print out as much information as possible about the VDS");
+            Console.WriteLine("                        providers on the system");
             Console.WriteLine();
             Console.WriteLine("Options:");
             Console.WriteLine("  --portal_address      The target portal address to use for the operation");
@@ -581,6 +627,8 @@ namespace windiskhelper
                 "force_mountpoints",
                 "relabel",
                 "force_unmount",
+                "dump_disk_info",
+                "dump_vds_prov_info",
             };
 
             // Check for extra/misspelled args
@@ -598,7 +646,22 @@ namespace windiskhelper
             // Check for required argument combinations
             if (Args["add_portal"] != null)
             {
-                return CheckRequiredArgsWithValues(Args, new List<string>() { "portal_address", "chap_secret", "chap_user" });
+                if (CheckRequiredArgsWithValues(Args, new List<string>() { "portal_address" }))
+                {
+                    if (Args["chap_user"] != null)
+                    {
+                        return CheckRequiredArgsWithValues(Args, new List<string>() { "chap_secret" });
+                    }
+                    if (Args["chap_secret"] != null)
+                    {
+                        return CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user" });
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+                return true;
             }
             else if (Args["remove_portal"] != null)
             {
@@ -606,10 +669,7 @@ namespace windiskhelper
             }
             //else if (Args["refresh_targets"] != null) { }
             //else if (Args["list_portals"] != null) { }
-            else if (Args["login_targets"] != null)
-            {
-                return CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user", "chap_secret" });
-            }
+            //else if (Args["login_targets"] != null) { }
             //else if (Args["logout_targets"] != null) { }
             //else if (Args["list_disks"] != null) { }
             //else if (Args["setup_disks"] != null) { }

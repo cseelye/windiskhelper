@@ -24,7 +24,7 @@ namespace windiskhelper
             mClientHostname = "localhost";
             ConnectWmiScope(@"root\wmi");
             mVdsService = ConnectVdsService();
-            mVdsProvider = ConnectVdsProvider();
+            mVdsProvider = ConnectVdsProviderBasic();
         }
 
         public MicrosoftInitiator(string pHostname, string pUsername, string pPassword)
@@ -37,7 +37,7 @@ namespace windiskhelper
             ConnectWmiScope(@"root\wmi");
 
             mVdsService = ConnectVdsService();
-            mVdsProvider = ConnectVdsProvider();
+            mVdsProvider = ConnectVdsProviderBasic();
         }
 
         #region Infrastructure for remote connections/impersonation
@@ -298,51 +298,92 @@ namespace windiskhelper
             return mVdsService;
         }
 
-        private SoftwareProvider ConnectVdsProvider(bool pReconnect = false)
+        private SoftwareProvider ConnectVdsProviderDynamic(bool pReconnect = false)
         {
-            if (mVdsProvider == null || pReconnect)
+            Service vds_service = ConnectVdsService();
+            if (mClientHostname != "localhost" && mClientUsername != null)
             {
-                Service vds_service = ConnectVdsService();
-                if (mClientHostname != "localhost" && mClientUsername != null)
-                {
-                    Logger.Debug("Connecting to VDS provider on " + mClientHostname + " as " + mClientUsername + ":" + mClientPassword);
-                    StartImpersonation();
-                }
-                else
-                {
-                    Logger.Debug("Connecting to VDS provider on " + mClientHostname + " as current user");
-                }
-                try
-                {
-
-                    SoftwareProvider basic_disk_provider = null; // Only for managing BASIC disks, not dynamic
-                    Guid basic_guid = new Guid("{ca7de14f-5bc8-48fd-93de-a19527b0459e}");
-
-                    // Find the basic disk provider
-                    vds_service.HardwareProvider = false;
-                    vds_service.SoftwareProvider = true;
-                    foreach (SoftwareProvider provider in vds_service.Providers)
-                    {
-                        if (provider.Id == basic_guid)
-                        {
-                            basic_disk_provider = provider;
-                        }
-                    }
-                    mVdsProvider = basic_disk_provider;
-                }
-                finally
-                {
-                    if (mClientHostname != "localhost" && mClientUsername != null)
-                    {
-                        EndImpersonation();
-                    }
-                }
+                Logger.Debug("Connecting to dynamic disk VDS provider on " + mClientHostname + " as " + mClientUsername + ":" + mClientPassword);
+                StartImpersonation();
             }
             else
             {
-                mVdsProvider.Refresh();
+                Logger.Debug("Connecting to dynamic disk VDS provider on " + mClientHostname + " as current user");
             }
-            return mVdsProvider;
+
+            SoftwareProvider dynamic_disk_provider = null;
+            try
+            {
+                Guid basic_guid = new Guid("{a86ae501-ef73-4c8d-827e-98ba5046b05f}"); // Only for managing DYNAMIC disks, not basic
+
+                // Find the basic disk provider
+                vds_service.HardwareProvider = false;
+                vds_service.SoftwareProvider = true;
+                foreach (SoftwareProvider provider in vds_service.Providers)
+                {
+                    if (provider.Id == basic_guid)
+                    {
+                        dynamic_disk_provider = provider;
+                    }
+                }
+                if (dynamic_disk_provider == null)
+                {
+                    throw new IscsiException("Could not find dynamic disk provider");
+                }
+            }
+            finally
+            {
+                if (mClientHostname != "localhost" && mClientUsername != null)
+                {
+                    EndImpersonation();
+                }
+            }
+            dynamic_disk_provider.Refresh();
+            return dynamic_disk_provider;
+        }
+
+        private SoftwareProvider ConnectVdsProviderBasic()
+        {
+            Service vds_service = ConnectVdsService();
+            if (mClientHostname != "localhost" && mClientUsername != null)
+            {
+                Logger.Debug("Connecting to basic disk VDS provider on " + mClientHostname + " as " + mClientUsername + ":" + mClientPassword);
+                StartImpersonation();
+            }
+            else
+            {
+                Logger.Debug("Connecting to basic disk VDS provider on " + mClientHostname + " as current user");
+            }
+
+            SoftwareProvider basic_disk_provider = null;
+            try
+            {
+                Guid basic_guid = new Guid("{ca7de14f-5bc8-48fd-93de-a19527b0459e}"); // Only for managing BASIC disks, not dynamic
+
+                // Find the basic disk provider
+                vds_service.HardwareProvider = false;
+                vds_service.SoftwareProvider = true;
+                foreach (SoftwareProvider provider in vds_service.Providers)
+                {
+                    if (provider.Id == basic_guid)
+                    {
+                        basic_disk_provider = provider;
+                    }
+                }
+                if (basic_disk_provider == null)
+                {
+                    throw new IscsiException("Could not find basic disk provider");
+                }
+            }
+            finally
+            {
+                if (mClientHostname != "localhost" && mClientUsername != null)
+                {
+                    EndImpersonation();
+                }
+            }
+            basic_disk_provider.Refresh();
+            return basic_disk_provider;
         }
         
         #endregion
@@ -1067,18 +1108,21 @@ namespace windiskhelper
 
         private void LoginTargetClassHelper(ManagementObject pTarget, string pChapUsername, string pChapSecret, bool pPersistent = false)
         {
-            // Set up login options for target to use
-            ManagementObject login_options = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_TargetLoginOptions");
-            login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
-            login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(pChapUsername);
-            login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(pChapSecret);
-
             string target_name = pTarget["TargetName"].ToString();
             Logger.Debug("Logging in to target '" + target_name + "'");
 
             // Set up parameters for login method call
             ManagementBaseObject method_params = pTarget.GetMethodParameters("Login");
-            method_params["LoginOptions"] = login_options;
+
+            if (!String.IsNullOrEmpty(pChapUsername) && !String.IsNullOrEmpty(pChapSecret))
+            {
+                // Set up login options for target to use
+                ManagementObject login_options = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_TargetLoginOptions");
+                login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
+                login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(pChapUsername);
+                login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(pChapSecret);
+                method_params["LoginOptions"] = login_options;
+            }
 
             // Call the Login method and check return code
             ManagementBaseObject return_params = null;
@@ -1155,7 +1199,7 @@ namespace windiskhelper
         private void RemoveMountsHelper(Dictionary<string, string> pDeviceToVolumeMap)
         {
             Service vds_service = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProvider();
+            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
             {
                 string dev_name = null;
@@ -1192,7 +1236,7 @@ namespace windiskhelper
         {
             Logger.Info("Unmounting disks");
             Service vds_service = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProvider();
+            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
             {
                 string dev_name = null;
@@ -1256,7 +1300,9 @@ namespace windiskhelper
         private void OnlineAndPackHelper(Dictionary<string, string> pDeviceToVolumeMap)
         {
             Service vds_service = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProvider();
+            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
+
+            HashSet<string> warned512e = new HashSet<string>();
 
             // Find brand new disks
             foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
@@ -1274,9 +1320,14 @@ namespace windiskhelper
                     else
                         continue;
 
-                    if (disk.BytesPerSector != 512)
+                    if (disk.BytesPerSector != 512 && !warned512e.Contains(volume_name))
                     {
-                        Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
+                        if (Environment.OSVersion.Version.Major < 6 ||
+                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
+                        {
+                            Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
+                            warned512e.Add(volume_name);
+                        }
                     }
 
                     // Make sure disk is online
@@ -1311,9 +1362,14 @@ namespace windiskhelper
 
                     volume_name = pDeviceToVolumeMap[dev_name];
 
-                    if (disk.BytesPerSector != 512)
+                    if (disk.BytesPerSector != 512 && !warned512e.Contains(volume_name))
                     {
-                        Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
+                        if (Environment.OSVersion.Version.Major < 6 ||
+                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
+                        {
+                            Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
+                            warned512e.Add(volume_name);
+                        }
                     }
 
                     // Make sure disk is online
@@ -1352,7 +1408,7 @@ namespace windiskhelper
             // Assume disk == partition == volume == mount point
             // 1:1:1:1
             Service vds_service = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProvider();
+            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
 
             // Find all disks in all disk packs and make sure they are partitioned, formatted and mounted
             foreach (Pack disk_pack in vds_provider.Packs)
@@ -1369,7 +1425,11 @@ namespace windiskhelper
 
                     if (disk.BytesPerSector != 512)
                     {
-                        Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
+                        if (Environment.OSVersion.Version.Major < 6 ||
+                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
+                        {
+                            Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
+                        }
                     }
 
                     // Partition and format the disk if it isn't already
@@ -1481,7 +1541,7 @@ namespace windiskhelper
             // Assume disk == partition == volume == mount point
             // 1:1:1:1
             Service vds_service = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProvider();
+            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
 
             // Find all disks in all disk packs and make sure they are partitioned, formatted and mounted
             foreach (Pack disk_pack in vds_provider.Packs)
@@ -1556,6 +1616,58 @@ namespace windiskhelper
             }
         }
 
+        public void DebugShowAllVDSProviders()
+        {
+            Service vds_service = ConnectVdsService();
+            vds_service.HardwareProvider = true;
+            vds_service.SoftwareProvider = true;
+            foreach (Provider provider in vds_service.Providers)
+            {
+                Logger.Info("Provider\n" + ObjectDumper.ObjectDumperExtensions.DumpToString<Provider>(provider, "provider"));
+            }
+        }
+
+        public void DebugShowAllDiskDevices()
+        {
+            Logger.Info("==========================   Dumping VDS database  ==========================");
+            Service vds_service = ConnectVdsService();
+            foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
+            {
+                Logger.Info("Unallocated disk\n" + ObjectDumper.ObjectDumperExtensions.DumpToString<AdvancedDisk>(disk, "disk"));
+            }
+            Logger.Info("  ========================   Dynamic Disks  ========================");
+            SoftwareProvider vds_provider = ConnectVdsProviderDynamic();
+            foreach (Pack disk_pack in vds_provider.Packs)
+            {
+                Logger.Info("Disk pack " + disk_pack.Name);
+                Logger.Info("  ID = " + disk_pack.Id);
+                Logger.Info("  Provider.Name = " + disk_pack.Provider.Name);
+                Logger.Info("  Provider.ID = " + disk_pack.Provider.Id);
+                Logger.Info("  Status = " + disk_pack.Status);
+                Logger.Info("  Flags = " + disk_pack.Flags);
+                foreach (AdvancedDisk disk in disk_pack.Disks)
+                {
+                    Logger.Info("Allocated disk\n" + ObjectDumper.ObjectDumperExtensions.DumpToString<AdvancedDisk>(disk, "disk"));
+                }
+            }
+
+            Logger.Info("  ========================   Basic Disks  ========================");
+            vds_provider = ConnectVdsProviderBasic();
+            foreach (Pack disk_pack in vds_provider.Packs)
+            {
+                Logger.Info("Disk pack " + disk_pack.Name);
+                Logger.Info("  ID = " + disk_pack.Id);
+                Logger.Info("  Provider.Name = " + disk_pack.Provider.Name);
+                Logger.Info("  Provider.ID = " + disk_pack.Provider.Id);
+                Logger.Info("  Status = " + disk_pack.Status);
+                Logger.Info("  Flags = " + disk_pack.Flags);
+                foreach (AdvancedDisk disk in disk_pack.Disks)
+                {
+                    Logger.Info("Allocated disk\n" + ObjectDumper.ObjectDumperExtensions.DumpToString<AdvancedDisk>(disk, "disk"));
+                }
+            }
+        }
+
         private void WaitForDiskDevices()
         {
             Logger.Info("Waiting for disk devices");
@@ -1601,37 +1713,40 @@ namespace windiskhelper
             // Wait until all of the volumes are present in the disk database
             Logger.Debug("Waiting for all volumes to be present in the disk database");
             Service vds_service = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProvider();
+            List<SoftwareProvider> provider_list = new List<SoftwareProvider> { ConnectVdsProviderBasic(), ConnectVdsProviderDynamic() };
             HashSet<string> found_devices = new HashSet<string>();
             while (true)
             {
                 found_devices = new HashSet<string>();
-                foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
-                {
-                    // It looks like VDS randomly returns an empty string for the FriendlyName if you have more than a handful of volumes, so this is not reliable.
-                    // Instead we made a list of expected devices up above from the list of active iSCSI sessions and look for each of those devices here
-                    string dev_name = disk.Name.Replace('?', '.');
-                    if (expected_devices.Contains(dev_name))
+				foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
+				{
+					// It looks like VDS randomly returns an empty string for the FriendlyName if you have more than a handful of volumes, so this is not reliable.
+					// Instead we made a list of expected devices up above from the list of active iSCSI sessions and look for each of those devices here
+					string dev_name = disk.Name.Replace('?', '.');
+					if (expected_devices.Contains(dev_name))
+					{
+						//Logger.Debug("  Found unallocated " + dev_name + " '" + disk.FriendlyName + "'");
+						found_devices.Add(dev_name);
+						continue;
+					}
+				}
+                foreach (SoftwareProvider prov in provider_list)
+				{
+					foreach (Pack disk_pack in prov.Packs)
                     {
-                        //Logger.Debug("  Found unallocated " + dev_name + " '" + disk.FriendlyName + "'");
-                        found_devices.Add(dev_name);
-                        continue;
-                    }
-                }
-                foreach (Pack disk_pack in vds_provider.Packs)
-                {
-                    foreach (AdvancedDisk disk in disk_pack.Disks)
-                    {
-                        string dev_name = disk.Name.Replace('?', '.');
-                        if (expected_devices.Contains(dev_name))
+                        foreach (AdvancedDisk disk in disk_pack.Disks)
                         {
-                            //Logger.Debug("  Found in use " + dev_name + " '" + disk.FriendlyName + "'");
-                            found_devices.Add(dev_name);
-                            continue;
+                            string dev_name = disk.Name.Replace('?', '.');
+                            if (expected_devices.Contains(dev_name))
+                            {
+                                //Logger.Debug("  Found in use " + dev_name + " '" + disk.FriendlyName + "'");
+                                found_devices.Add(dev_name);
+                                continue;
+                            }
                         }
-                        //break;
                     }
                 }
+
                 if (found_devices.Count >= expected_devices.Count)
                 {
                     break;
@@ -1647,35 +1762,46 @@ namespace windiskhelper
                     Logger.Debug("Missing " + missing.ToString().TrimEnd(',', ' '));
                     Thread.Sleep(5 * 1000);
                     vds_service = ConnectVdsService();
-                    vds_provider = ConnectVdsProvider();
+                    provider_list = new List<SoftwareProvider> { ConnectVdsProviderBasic(), ConnectVdsProviderDynamic() };
                 }
             }
         }
 
         private void ValidateChapUser(string pChapUser)
         {
-            if (!Regex.IsMatch(pChapUser, "^[a-zA-Z0-9]+$"))
-            {
-                throw new IscsiException("The Microsft iSCSI initiator is unreliable unless the CHAP username is strictly alphanumeric");
-            }
+            return;
+            // This appears to be working better now
+            //if (!Regex.IsMatch(pChapUser, "^[a-zA-Z0-9]+$"))
+            //{
+            //    throw new IscsiException("The Microsft iSCSI initiator is unreliable unless the CHAP username is strictly alphanumeric");
+            //}
         }
-        
+
+
+        public void AddTargetPortal(string pPortalAddress, bool pRefreshTargetList = true)
+        {
+            AddTargetPortal(pPortalAddress, null, null, pRefreshTargetList);
+        }
 
         public void AddTargetPortal(string pPortalAddress, string pChapUsername, string pChapSecret, bool pRefreshTargetList = true)
         {
             ValidateChapUser(pChapUsername);
 
-            // Set up login options (CHAP)
-            ManagementObject login_options = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_TargetLoginOptions");
-            login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
-            login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(pChapUsername);
-            login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(pChapSecret);
-
             // Create the new portal
             ManagementObject portal = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_SendTargetPortalClass");
             portal["PortalAddress"] = pPortalAddress;
             portal["PortalPort"] = 3260;
-            portal["LoginOptions"] = login_options;
+
+            if (!String.IsNullOrEmpty(pChapUsername) && !String.IsNullOrEmpty(pChapSecret))
+            {
+                // Set up login options (CHAP)
+                ManagementObject login_options = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_TargetLoginOptions");
+                login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
+                login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(pChapUsername);
+                login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(pChapSecret);
+
+                portal["LoginOptions"] = login_options;
+            }
 
             // Commit the change to the initiator
             try
@@ -2131,9 +2257,17 @@ namespace windiskhelper
             }
         }
 
+        public void LoginAllTargets(bool pPersistent = false)
+        {
+            LoginAllTargets(null, null, pPersistent);
+        }
+
         public void LoginAllTargets(string pChapUsername, string pChapSecret, bool pPersistent = false)
         {
-            ValidateChapUser(pChapUsername);
+            if (!String.IsNullOrEmpty(pChapUsername))
+            {
+                ValidateChapUser(pChapUsername);
+            }
 
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
@@ -2161,13 +2295,6 @@ namespace windiskhelper
                 string target = login["TargetName"] as String;
                 persistent_logins.Add(target, login);
             }
-
-            // Set up login options for all targets to use
-            ManagementClass login_options_class = new ManagementClass(@"root\wmi:MSiSCSIInitiator_TargetLoginOptions");
-            ManagementObject login_options = login_options_class.CreateInstance();
-            login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
-            login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(pChapUsername);
-            login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(pChapSecret);
 
             // Log in to each target that does not already have a session
             foreach (ManagementObject target in target_list)
@@ -2202,16 +2329,24 @@ namespace windiskhelper
 
         }
 
+        public void LoginTargetsOnPortal(string pPortalAddress, bool pPersistent = false)
+        {
+            LoginTargetsOnPortal(pPortalAddress, null, null, pPersistent);
+        }
+
         public void LoginTargetsOnPortal(string pPortalAddress, string pChapUsername, string pChapSecret, bool pPersistent = false)
         {
-            ValidateChapUser(pChapUsername);
+            if (!String.IsNullOrEmpty(pChapUsername))
+            {
+                ValidateChapUser(pChapUsername);
+            }
 
             // Make a list of targets that are on the requested portal
             HashSet<string> portal_target_names = new HashSet<string>();
             ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
             foreach (ManagementObject target in target_list)
             {
-                // This works with the current version of MS iSCSI but it's a hack based on the string format of the DiscoveryMechanism field
+                // There is a shortcut for this that works with the current version of MS iSCSI but it's a hack based on the string format of the DiscoveryMechanism field:
                 //if (target["DiscoveryMechanism"].ToString().Contains(pPortalAddress.ToString())) { }
 
                 // Get a list of portal groups, on each portal group get a list of portals, on each portal compare the portal address to the one we are looking for
@@ -2253,12 +2388,6 @@ namespace windiskhelper
                 string target = login["TargetName"] as String;
                 persistent_logins.Add(target, login);
             }
-
-            // Set up login options for all targets to use
-            ManagementObject login_options = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_TargetLoginOptions");
-            login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
-            login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(pChapUsername);
-            login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(pChapSecret);
 
             // Log in to each target on this portal that does not already have a session
             foreach (ManagementObject target in target_list)
@@ -2418,7 +2547,7 @@ namespace windiskhelper
             // 1:1:1:1
             // Look for disks and the corresponding windows volumes
             Service vds = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProvider();
+            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
             {
                 string dev_name = null;
@@ -2499,7 +2628,7 @@ namespace windiskhelper
             // 1:1:1:1
             // Look for disks and the corresponding windows volumes
             Service vds = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProvider();
+            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
             {
                 string dev_name = null;
