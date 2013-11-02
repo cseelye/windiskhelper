@@ -63,6 +63,9 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="ObjectDumper.dll" />
+    <EmbeddedResource Include="Microsoft.Storage.Vds.dll" />
+    <EmbeddedResource Include="Microsoft.Storage.Vds.resources.dll" />
     <EmbeddedResource Include="log4net.dll" />
     <Content Include="log4net.xml" />
   </ItemGroup>

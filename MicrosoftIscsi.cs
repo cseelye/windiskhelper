@@ -24,7 +24,7 @@ namespace windiskhelper
             mClientHostname = "localhost";
             ConnectWmiScope(@"root\wmi");
             mVdsService = ConnectVdsService();
-            mVdsProvider = ConnectVdsProviderBasic();
+            //mVdsProvider = ConnectVdsProviderBasic();
         }
 
         public MicrosoftInitiator(string pHostname, string pUsername, string pPassword)
@@ -37,7 +37,7 @@ namespace windiskhelper
             ConnectWmiScope(@"root\wmi");
 
             mVdsService = ConnectVdsService();
-            mVdsProvider = ConnectVdsProviderBasic();
+            //mVdsProvider = ConnectVdsProviderBasic();
         }
 
         #region Infrastructure for remote connections/impersonation
@@ -130,7 +130,6 @@ namespace windiskhelper
         private string mClientUsername;
         private string mClientPassword;
         private Service mVdsService;
-        private SoftwareProvider mVdsProvider;
         private WindowsImpersonationContext mRemoteIdentity;
 
         private void StartImpersonation()
@@ -298,7 +297,7 @@ namespace windiskhelper
             return mVdsService;
         }
 
-        private SoftwareProvider ConnectVdsProviderDynamic(bool pReconnect = false)
+        private SoftwareProvider ConnectVdsProviderDynamic()
         {
             Service vds_service = ConnectVdsService();
             if (mClientHostname != "localhost" && mClientUsername != null)
@@ -1736,10 +1735,14 @@ namespace windiskhelper
                     {
                         foreach (AdvancedDisk disk in disk_pack.Disks)
                         {
+                            //if (String.IsNullOrEmpty(disk.Name))
+                            //{
+                            //    Logger.Debug(disk.Id +  " has a null disk name");
+                            //    continue;
+                            //}
                             string dev_name = disk.Name.Replace('?', '.');
                             if (expected_devices.Contains(dev_name))
                             {
-                                //Logger.Debug("  Found in use " + dev_name + " '" + disk.FriendlyName + "'");
                                 found_devices.Add(dev_name);
                                 continue;
                             }

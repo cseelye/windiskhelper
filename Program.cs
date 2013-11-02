@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Reflection;
+using System.Threading;
 
 namespace windiskhelper
 
@@ -80,6 +81,14 @@ namespace windiskhelper
             else
             {
                 Logger.DisableConsoleDebug();
+            }
+
+            // Allow for the remote debugger to connect
+            if (Args["wait_for_debug"] != null)
+            {
+                int wait_time = int.Parse(Args["wait_for_debug"]);
+                Logger.Info("Waiting " + wait_time + " sec for debug connection");
+                Thread.Sleep(wait_time * 1000);
             }
 
             // Initialize the initiator object for remote or local connection
@@ -508,6 +517,8 @@ namespace windiskhelper
             {
                 try
                 {
+                    Logger.Debug("dumping disk database");
+                    Logger.Debug(msinit.ToString());
                     msinit.DebugShowAllDiskDevices();
                 }
                 catch (MicrosoftInitiator.IscsiException) { }
@@ -629,6 +640,7 @@ namespace windiskhelper
                 "force_unmount",
                 "dump_disk_info",
                 "dump_vds_prov_info",
+                "wait_for_debug",
             };
 
             // Check for extra/misspelled args
@@ -691,13 +703,28 @@ namespace windiskhelper
                 catch (FormatException)
                 {
                     Console.WriteLine("Invalid portal_address");
+                    return false;
                 }
                 catch (ArgumentException)
                 {
                     Console.WriteLine("Invalid portal_address");
+                    return false;
                 }
             }
-
+            if (Args["wait_for_debug"] != null)
+            {
+                try
+                {
+                    int i = int.Parse(Args["wait_for_debug"]);
+                    if (i <= 0)
+                        throw new FormatException();
+                }
+                catch (FormatException)
+                {
+                    Console.WriteLine("wait_for_debug must be a positive integer");
+                    return false;
+                }
+            }
             if (Args["username"] != null)
             {
                 return CheckRequiredArgsWithValues(Args, new List<string>() { "password" });
