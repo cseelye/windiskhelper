@@ -292,7 +292,10 @@ namespace windiskhelper
             }
             else
             {
+                mVdsService.Reenumerate();
+                Thread.Sleep(1000);
                 mVdsService.Refresh();
+                Thread.Sleep(1000);
             }
             return mVdsService;
         }
@@ -2429,6 +2432,8 @@ namespace windiskhelper
 
         public void PartitionAndFormatDisksOnPortal(string pPortalAddress, bool pRelabel = false)
         {
+            Service vds = ConnectVdsService();
+            vds.Reenumerate();
             Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapOnPortal(pPortalAddress);
             OnlineAndPackHelper(device_to_volume);
             PartitionAndFormatHelper(device_to_volume, pRelabel);
@@ -2472,6 +2477,8 @@ namespace windiskhelper
 
         public void PartitionAndFormatAllDisks(bool pRelabel = false)
         {
+            Service vds = ConnectVdsService();
+            vds.Reenumerate();
             Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapAll();
             OnlineAndPackHelper(device_to_volume);
             PartitionAndFormatHelper(device_to_volume, pRelabel);
