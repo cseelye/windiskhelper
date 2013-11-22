@@ -1111,7 +1111,7 @@ namespace windiskhelper
         private void LoginTargetClassHelper(ManagementObject pTarget, string pChapUsername, string pChapSecret, bool pPersistent = false)
         {
             string target_name = pTarget["TargetName"].ToString();
-            Logger.Debug("Logging in to target '" + target_name + "'");
+            Logger.Info("Logging in to target " + target_name);
 
             // Set up parameters for login method call
             ManagementBaseObject method_params = pTarget.GetMethodParameters("Login");
@@ -2303,6 +2303,7 @@ namespace windiskhelper
             }
 
             // Log in to each target that does not already have a session
+            IscsiException last_exception = null;
             foreach (ManagementObject target in target_list)
             {
                 string target_name = target["TargetName"] as String;
@@ -2323,7 +2324,15 @@ namespace windiskhelper
                     }
 
                     // Log in to the target
-                    LoginTargetClassHelper(target, pChapUsername, pChapSecret, pPersistent);
+                    try
+                    {
+                        LoginTargetClassHelper(target, pChapUsername, pChapSecret, pPersistent);
+                    }
+                    catch (IscsiException e)
+                    {
+                        Logger.Error("Failed to log in: " + e.Message);
+                        last_exception = e;
+                    }
                     Logger.Info("Logged in to target '" + target_name + "'");
                 }
             }
@@ -2331,8 +2340,10 @@ namespace windiskhelper
             // Wait for the system to create devices and populate the disk database
             WaitForDiskDevices();
 
-            // Remove any auto-created mount points
-
+            if (last_exception != null)
+            {
+                throw new IscsiException("Could not log in to all targets");
+            }
         }
 
         public void LoginTargetsOnPortal(string pPortalAddress, bool pPersistent = false)
