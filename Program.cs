@@ -73,6 +73,14 @@ namespace windiskhelper
                 Environment.Exit(EXIT_SUCCESS);
             }
 
+            // Turn on batch mode if requested
+            bool batch = false;
+            if (Args["batch"] != null)
+            {
+                Logger.EnableBatchMode();
+                batch = true;
+            }
+
             // Turn on debug messages if requested
             if (Args["debug"] != null)
             {
@@ -87,8 +95,16 @@ namespace windiskhelper
             if (Args["wait_for_debug"] != null)
             {
                 int wait_time = int.Parse(Args["wait_for_debug"]);
-                Logger.Info("Waiting " + wait_time + " sec for debug connection");
-                Thread.Sleep(wait_time * 1000);
+                //Logger.Info("Waiting " + wait_time + " sec for debug connection");
+                //Thread.Sleep(wait_time * 1000);
+                Logger.Info("Waiting up to " + wait_time + " sec for debug connection");
+                DateTime start_time = DateTime.Now;
+                while ((DateTime.Now - start_time).TotalSeconds < wait_time)
+                {
+                    Thread.Sleep(100);
+                    if (System.Diagnostics.Debugger.IsAttached)
+                        break;
+                }
             }
 
             // Initialize the initiator object for remote or local connection
@@ -230,6 +246,48 @@ namespace windiskhelper
                     if (target.IsLoggedIn)
                         display_str.Append(" (LOGGED IN)");
                     Logger.Info(display_str.ToString());
+                    if (batch)
+                        Console.WriteLine(display_str.ToString());
+                }
+                Environment.Exit(EXIT_SUCCESS);
+            }
+            else if (Args["list_sessions"] != null)
+            {
+                List<MicrosoftInitiator.SessionInfo> session_list = new List<MicrosoftInitiator.SessionInfo>();
+                bool include_boot = false;
+                if (Args["include_boot_vol"] != null)
+                    include_boot = true;
+
+                try
+                {
+                    if (Args["portal_address"] != null)
+                    {
+                        
+                        //target_list = msinit.GetTargetsOnPortal(Args["portal_address"]);
+                    }
+                    else
+                    {
+                        session_list = msinit.GetAllSessions(include_boot);
+                    }
+                }
+                catch (MicrosoftInitiator.IscsiException e)
+                {
+                    Logger.Error("Listing sessions failed: " + e.Message);
+                    LogExceptionDetail(e);
+                    Environment.Exit(EXIT_FAIL);
+                }
+
+                foreach (MicrosoftInitiator.SessionInfo session in session_list)
+                {
+                    StringBuilder display_str = new StringBuilder();
+                    display_str.Append(session.SessionId + " => ");
+                    display_str.Append(session.TargetIqn);
+                    display_str.Append(", InitiatorIP: " + session.InitiatorAddress);
+                    display_str.Append(", TargetIP: " + session.TargetAddress);
+
+                    Logger.Info(display_str.ToString());
+                    if (batch)
+                        Console.WriteLine(display_str.ToString());
                 }
                 Environment.Exit(EXIT_SUCCESS);
             }
@@ -341,6 +399,8 @@ namespace windiskhelper
                 foreach (MicrosoftInitiator.DiskInfo disk in disk_list)
                 {
                     Logger.Info(disk.TargetName + " => " + disk.LegacyDeviceName + ", SectorSize: " + disk.SectorSize + ", Portal: " + disk.PortalAddress + ", MountPoint: " + disk.MountPoint);
+                    if (batch)
+                        Console.WriteLine(disk.TargetName + " => " + disk.LegacyDeviceName + ", SectorSize: " + disk.SectorSize + ", Portal: " + disk.PortalAddress + ", MountPoint: " + disk.MountPoint);
                 }
             }
             else if (Args["online_disks"] != null)
@@ -446,6 +506,8 @@ namespace windiskhelper
                 {
                     string node_name = msinit.GetInitiatorName();
                     Logger.Info(node_name);
+                    if (batch)
+                        Console.WriteLine(node_name);
                     Environment.Exit(EXIT_SUCCESS);
                 }
                 catch (MicrosoftInitiator.IscsiException e)
@@ -550,6 +612,10 @@ namespace windiskhelper
             Console.WriteLine("iSCSI helper for the Microsoft iSCSI Initiator");
             Console.WriteLine();
             Console.WriteLine("Verbs:");
+            Console.WriteLine("  --show_initiatorname  Display the current initiator IQN");
+            Console.WriteLine("  --set_initiatorname   Change the current initiator IQN");
+            Console.WriteLine("  --default_initiatorname   Change the current initiator IQN to the default");
+            Console.WriteLine("                        Microsft value");
             Console.WriteLine("  --add_portal          add a target discovery portal to the initiator. Requires");
             Console.WriteLine("                        portal_address, and requires chap_user, chap_secret if");
             Console.WriteLine("                        using CHAP");
@@ -557,6 +623,8 @@ namespace windiskhelper
             Console.WriteLine("                        portal_address");
             Console.WriteLine("  --list_portals        Display a list of the target portals");
             Console.WriteLine("  --list_targets        Display a list of discovered targets. Optionally include");
+            Console.WriteLine("                        portal_address");
+            Console.WriteLine("  --list_sessions       Display a list of sessions. Optionally include");
             Console.WriteLine("                        portal_address");
             Console.WriteLine("  --refresh_targets     Refresh the list of discovered targets.");
             Console.WriteLine("  --login_targets       Log in to discovered targets. Requires chap_user,");
@@ -590,6 +658,11 @@ namespace windiskhelper
             Console.WriteLine("                        the IQN of the volume");
             Console.WriteLine("  --force_mountpoints   Remove automount drive letters and remount with mount point");
             Console.WriteLine("  --force_unmount       Forcibly unmount volumes before logging out of targets");
+            Console.WriteLine("  --include_boot_vol    Include the iSCSI boot volume in whatever action you are trying");
+            Console.WriteLine("                        to perform.  This only works for a narrow list of things");
+            Console.WriteLine();
+            Console.WriteLine("Display Options:");
+            Console.WriteLine("  --batch               Minimize the output (useful when being wrapped in a script)");
             Console.WriteLine();
             Console.WriteLine("Connection Parameters:");
             Console.WriteLine("  --client_ip           The IP address (or hostname if DNS is working) of the system");
@@ -641,6 +714,9 @@ namespace windiskhelper
                 "dump_disk_info",
                 "dump_vds_prov_info",
                 "wait_for_debug",
+                "batch",
+                "list_sessions",
+                "include_boot_vol",
             };
 
             // Check for extra/misspelled args

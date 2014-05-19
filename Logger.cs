@@ -11,10 +11,15 @@ namespace windiskhelper
 {
     public class Logger
     {
-        private const string LOG_PATTERN = "%date{dd-MM-yyyy HH:mm:ss,fff}: %-6level %message%newline";
+        private const string LOG_PATTERN = "%date{yyy-MM-dd HH:mm:ss,fff}: %-6level %message%newline";
         private static ILog m_Log;
 
         static Logger()
+        {
+            InitLog();
+        }
+
+        private static void InitLog()
         {
             Hierarchy hierarchy = (Hierarchy)LogManager.GetRepository();
             hierarchy.Root.Level = Level.All;
@@ -68,19 +73,33 @@ namespace windiskhelper
             hierarchy.Configured = true;
 
             m_Log = LogManager.GetLogger(System.Reflection.Assembly.GetExecutingAssembly().FullName);
+
+        }
+
+        public static void EnableBatchMode()
+        {
+            Hierarchy hierarchy = (Hierarchy)LogManager.GetRepository();
+            hierarchy.Root.Level = Level.All;
+            hierarchy.Root.RemoveAppender("ConsoleLogger");
         }
 
         public static void EnableConsoleDebug()
         {
             Hierarchy hierarchy = (Hierarchy)LogManager.GetRepository();
             ColoredConsoleAppender console = hierarchy.Root.GetAppender("ConsoleLogger") as ColoredConsoleAppender;
-            console.Threshold = Level.Debug;
+            if (console != null)
+            {
+                console.Threshold = Level.Debug;
+            }
         }
         public static void DisableConsoleDebug()
         {
             Hierarchy hierarchy = (Hierarchy)LogManager.GetRepository();
             ColoredConsoleAppender console = hierarchy.Root.GetAppender("ConsoleLogger") as ColoredConsoleAppender;
-            console.Threshold = Level.Info;
+            if (console != null)
+            {
+                console.Threshold = Level.Info;
+            }
         }
 
         public static void Debug(string Message)

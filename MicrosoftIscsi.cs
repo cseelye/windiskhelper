@@ -20,11 +20,11 @@ namespace windiskhelper
     {
         public MicrosoftInitiator()
         {
-            Logger.Info("Connecting to local system");
             mClientHostname = "localhost";
-            ConnectWmiScope(@"root\wmi");
-            mVdsService = ConnectVdsService();
-            //mVdsProvider = ConnectVdsProviderBasic();
+
+            //Logger.Info("Connecting to local system");
+            //ConnectWmiScope(@"root\wmi");
+            //mVdsService = ConnectVdsService();
         }
 
         public MicrosoftInitiator(string pHostname, string pUsername, string pPassword)
@@ -33,11 +33,9 @@ namespace windiskhelper
             mClientUsername = pUsername;
             mClientPassword = pPassword;
 
-            Logger.Info("Connecting to " + pHostname);
-            ConnectWmiScope(@"root\wmi");
-
-            mVdsService = ConnectVdsService();
-            //mVdsProvider = ConnectVdsProviderBasic();
+            //Logger.Info("Connecting to " + pHostname);
+            //ConnectWmiScope(@"root\wmi");
+            //mVdsService = ConnectVdsService();
         }
 
         #region Infrastructure for remote connections/impersonation
@@ -297,6 +295,7 @@ namespace windiskhelper
                 mVdsService.Refresh();
                 Thread.Sleep(1000);
             }
+            mVdsService.AutoMount = false;
             return mVdsService;
         }
 
@@ -428,6 +427,17 @@ namespace windiskhelper
             public string TargetIqn { get; set; }
             public UInt32 TargetFlags { get; set; }
             public bool IsLoggedIn { get; set; }
+        }
+
+        public class SessionInfo
+        {
+            public string SessionId { get; set; }
+            public string InitiatorIqn { get; set; }
+            public string TargetIqn { get; set; }
+            public string InitiatorAddress { get; set; }
+            public UInt16 InitiatorPort { get; set; }
+            public string TargetAddress { get; set; }
+            public UInt16 TargetPort { get; set; }
         }
 
         public class DiskInfo
@@ -970,6 +980,13 @@ namespace windiskhelper
                 {
                     throw new IscsiException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
                 }
+
+                // Weak check for boot/system volume
+                if ((UInt32)device_info[0]["DeviceNumber"] == 0)
+                {
+                    Logger.Debug("Leaving " + target_name + " out of device map because it is probably a system volume");
+                    continue;
+                }
                 string device_name = device_info[0]["LegacyName"] as String;
                 string volume_name = IqnToVolumeName(target_name);
 
@@ -1200,6 +1217,9 @@ namespace windiskhelper
 
         private void RemoveMountsHelper(Dictionary<string, string> pDeviceToVolumeMap)
         {
+            if (pDeviceToVolumeMap.Count <= 0)
+                return;
+
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
@@ -1222,6 +1242,11 @@ namespace windiskhelper
                 // Unmount the volumes
                 foreach (Volume vol in disk_pack.Volumes)
                 {
+                    if ((vol.Flags & VolumeFlags.SystemVolume) == VolumeFlags.SystemVolume || (vol.Flags & VolumeFlags.BootVolume) == VolumeFlags.BootVolume)
+                    {
+                        Logger.Debug("Not removing mount points from " + volume_name + " because it is a system volume");
+                        break;
+                    }
                     foreach (string mount_point in vol.AccessPaths)
                     {
                         Logger.Debug("Removing access path " + mount_point + " from " + volume_name);
@@ -1236,11 +1261,15 @@ namespace windiskhelper
 
         private void UnmountHelper(Dictionary<string, string> pDeviceToVolumeMap, bool pForceUnmount)
         {
+            if (pDeviceToVolumeMap.Count <= 0)
+                return;
+
             Logger.Info("Unmounting disks");
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
             {
+                bool system_volume = false;
                 string dev_name = null;
                 string volume_name = null;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
@@ -1258,6 +1287,12 @@ namespace windiskhelper
                 // Unmount the volumes
                 foreach (Volume vol in disk_pack.Volumes)
                 {
+                    if ((vol.Flags & VolumeFlags.SystemVolume) == VolumeFlags.SystemVolume || (vol.Flags & VolumeFlags.BootVolume) == VolumeFlags.BootVolume)
+                    {
+                        Logger.Debug("Skipping " + volume_name + " because it is a system volume");
+                        system_volume = true;
+                        break;
+                    }
                     foreach (string mount_point in vol.AccessPaths)
                     {
                         Logger.Debug("Removing access path " + mount_point + " from " + volume_name);
@@ -1279,6 +1314,9 @@ namespace windiskhelper
                     }
                     Thread.Sleep(1000);
                 }
+                // Continue on to the next pack if this one contains a system volume
+                if (system_volume)
+                    continue;
 
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
@@ -1301,6 +1339,9 @@ namespace windiskhelper
         
         private void OnlineAndPackHelper(Dictionary<string, string> pDeviceToVolumeMap)
         {
+            if (pDeviceToVolumeMap.Count <= 0)
+                return;
+
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
 
@@ -1407,6 +1448,9 @@ namespace windiskhelper
 
         private void PartitionAndFormatHelper(Dictionary<string, string> pDeviceToVolumeMap, bool pRelabel = false)
         {
+            if (pDeviceToVolumeMap.Count <= 0)
+                return;
+
             // Assume disk == partition == volume == mount point
             // 1:1:1:1
             Service vds_service = ConnectVdsService();
@@ -1415,6 +1459,8 @@ namespace windiskhelper
             // Find all disks in all disk packs and make sure they are partitioned, formatted and mounted
             foreach (Pack disk_pack in vds_provider.Packs)
             {
+                HashSet<string> warned512e = new HashSet<string>();
+
                 string dev_name = null;
                 string volume_name = null;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
@@ -1433,7 +1479,7 @@ namespace windiskhelper
                             Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
                         }
                     }
-
+                    
                     // Partition and format the disk if it isn't already
                     if (disk.Partitions.Count <= 0)
                     {
@@ -1540,11 +1586,15 @@ namespace windiskhelper
 
         private void MountpointHelper(Dictionary<string, string> pDeviceToVolumeMap, bool pForceMountPoints = false)
         {
+            if (pDeviceToVolumeMap.Count <= 0)
+                return;
+
             // Assume disk == partition == volume == mount point
             // 1:1:1:1
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
 
+            HashSet<string> warned512e = new HashSet<string>();
             // Find all disks in all disk packs and make sure they are partitioned, formatted and mounted
             foreach (Pack disk_pack in vds_provider.Packs)
             {
@@ -1557,9 +1607,14 @@ namespace windiskhelper
                         continue;
 
                     volume_name = pDeviceToVolumeMap[dev_name];
-                    if (disk.BytesPerSector != 512)
+                    if (disk.BytesPerSector != 512 && !warned512e.Contains(volume_name))
                     {
-                        Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
+                        if (Environment.OSVersion.Version.Major < 6 ||
+                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
+                        {
+                            Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
+                            warned512e.Add(volume_name);
+                        }
                     }
                     // Assume only a single disk per pack (simple volumes)
                     break;
@@ -1782,7 +1837,6 @@ namespace windiskhelper
             //    throw new IscsiException("The Microsft iSCSI initiator is unreliable unless the CHAP username is strictly alphanumeric");
             //}
         }
-
 
         public void AddTargetPortal(string pPortalAddress, bool pRefreshTargetList = true)
         {
@@ -2095,6 +2149,52 @@ namespace windiskhelper
                 targets_to_return.Add(target_info);
             }
             return targets_to_return;
+        }
+
+        public List<SessionInfo> GetAllSessions(bool pIncludeBootVolume = false)
+        {
+            // Get a list of session objects from the initiator
+            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
+
+            List<SessionInfo> sessions_to_return = new List<SessionInfo>();
+            foreach (ManagementObject session in session_list)
+            {
+                // Make sure this is not the boot volume
+                // This is a pretty weak check - just looking that this device is not disk 0
+                // But this should work with all known ways to configure boot from iSCSI
+                if (!pIncludeBootVolume)
+                {
+                    var device_list = session["Devices"] as ManagementBaseObject[];
+                    bool isboot = false;
+                    foreach (var dev in device_list)
+                    {
+                        if ((UInt32)dev["DeviceNumber"] == 0)
+                        {
+                            isboot = true;
+                            break;
+                        }
+                    }
+                    if (isboot)
+                        continue;
+                }
+
+                SessionInfo sess = new SessionInfo();
+                sess.InitiatorIqn = session["InitiatorName"] as string;
+                sess.SessionId = session["SessionId"] as string;
+                sess.TargetIqn = session["TargetName"] as string;
+                var connection_list = session["ConnectionInformation"] as ManagementBaseObject[];
+                foreach (var conn in connection_list)
+                {
+                    // We are assuming 1 connection per session, which is the case for SolidFire
+                    sess.InitiatorAddress = conn["InitiatorAddress"] as string;
+                    sess.InitiatorPort = (UInt16)conn["InitiatorPort"];
+                    sess.TargetAddress = conn["TargetAddress"] as string;
+                    sess.TargetPort = (UInt16)conn["TargetPort"];
+                }
+                sessions_to_return.Add(sess);
+            }
+
+            return sessions_to_return;
         }
 
         public List<TargetInfo> GetTargetsOnPortal(String pPortalAddress)
@@ -2488,8 +2588,6 @@ namespace windiskhelper
 
         public void PartitionAndFormatAllDisks(bool pRelabel = false)
         {
-            Service vds = ConnectVdsService();
-            vds.Reenumerate();
             Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapAll();
             OnlineAndPackHelper(device_to_volume);
             PartitionAndFormatHelper(device_to_volume, pRelabel);
@@ -2569,6 +2667,7 @@ namespace windiskhelper
             // Look for disks and the corresponding windows volumes
             Service vds = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
+            HashSet<string> warned512e = new HashSet<string>();
             foreach (Pack disk_pack in vds_provider.Packs)
             {
                 string dev_name = null;
@@ -2581,9 +2680,14 @@ namespace windiskhelper
                         break;
                     }
                     disk_list[dev_name].SectorSize = (int)disk.BytesPerSector;
-                    if (disk_list[dev_name].SectorSize != 512)
+                    if (disk.BytesPerSector != 512 && !warned512e.Contains(dev_name))
                     {
-                        Logger.Warn(disk_list[dev_name].TargetName + " is not using 512e - this can cause Windows issues.");
+                        if (Environment.OSVersion.Version.Major < 6 ||
+                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
+                        {
+                            Logger.Warn(dev_name + " is not using 512e - this can cause Windows issues.");
+                            warned512e.Add(dev_name);
+                        }
                     }
                     break;
                 }
@@ -2603,9 +2707,14 @@ namespace windiskhelper
                 if (disk_list.ContainsKey(dev_name))
                 {
                     disk_list[dev_name].SectorSize = (int)disk.BytesPerSector;
-                    if (disk_list[dev_name].SectorSize != 512)
+                    if (disk.BytesPerSector != 512 && !warned512e.Contains(dev_name))
                     {
-                        Logger.Warn(disk_list[dev_name].TargetName + " is not using 512e - this can cause Windows issues.");
+                        if (Environment.OSVersion.Version.Major < 6 ||
+                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
+                        {
+                            Logger.Warn(dev_name + " is not using 512e - this can cause Windows issues.");
+                            warned512e.Add(dev_name);
+                        }
                     }
                 }
             }
@@ -2648,6 +2757,7 @@ namespace windiskhelper
             // Assume disk == partition == volume == mount point
             // 1:1:1:1
             // Look for disks and the corresponding windows volumes
+            HashSet<string> warned512e = new HashSet<string>();
             Service vds = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
@@ -2662,9 +2772,14 @@ namespace windiskhelper
                         break;
                     }
                     disk_list[dev_name].SectorSize = (int)disk.BytesPerSector;
-                    if (disk_list[dev_name].SectorSize != 512)
+                    if (disk.BytesPerSector != 512 && !warned512e.Contains(dev_name))
                     {
-                        Logger.Warn(disk_list[dev_name].TargetName + " is not using 512e - this can cause Windows issues.");
+                        if (Environment.OSVersion.Version.Major < 6 ||
+                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
+                        {
+                            Logger.Warn(dev_name + " is not using 512e - this can cause Windows issues.");
+                            warned512e.Add(dev_name);
+                        }
                     }
                     break; // assume a single disk
                 }
@@ -2684,9 +2799,14 @@ namespace windiskhelper
                 if (disk_list.ContainsKey(dev_name))
                 {
                     disk_list[dev_name].SectorSize = (int)disk.BytesPerSector;
-                    if (disk_list[dev_name].SectorSize != 512)
+                    if (disk.BytesPerSector != 512 && !warned512e.Contains(dev_name))
                     {
-                        Logger.Warn(disk_list[dev_name].TargetName + " is not using 512e - this can cause Windows issues.");
+                        if (Environment.OSVersion.Version.Major < 6 ||
+                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
+                        {
+                            Logger.Warn(dev_name + " is not using 512e - this can cause Windows issues.");
+                            warned512e.Add(dev_name);
+                        }
                     }
                 }
             }
