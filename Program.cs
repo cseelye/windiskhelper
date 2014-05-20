@@ -6,13 +6,37 @@ using System.Reflection;
 using System.Threading;
 
 namespace windiskhelper
-
 {
     class Program
     {
         const int EXIT_SUCCESS = 0;
         const int EXIT_FAIL = 1;
         const int EXIT_WARN = 2;
+
+        static Program()
+        {
+            // Setup dynamic assembly loading from embedded resources
+            // This will be called the first time an unknown type is referenced and load the requested assembly from the embedded resource
+            // If the type is not one of ours, this call will fail and the resolver will move on to the GAC, etc.
+            AppDomain.CurrentDomain.AssemblyResolve += (sender, eventargs) =>
+            {
+                String resourceName = typeof(Program).Namespace + "." + new AssemblyName(eventargs.Name).Name + ".dll";
+                //Console.WriteLine("Looking for assembly " + resourceName);
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
+                {
+                    Byte[] assemblyData = new Byte[stream.Length];
+                    stream.Read(assemblyData, 0, assemblyData.Length);
+                    return Assembly.Load(assemblyData);
+                }
+            };
+
+            // Add a handler to catch and log otherwise unhandled exceptions.
+            AppDomain.CurrentDomain.UnhandledException += (object sender, UnhandledExceptionEventArgs e) =>
+            {
+                Logger.Error(e.ExceptionObject.ToString());
+                Environment.Exit(EXIT_FAIL);
+            };
+        }
 
         static void Main(string[] args)
         {
@@ -80,6 +104,12 @@ namespace windiskhelper
                 Logger.EnableBatchMode();
                 batch = true;
             }
+            bool json = false;
+            if (Args["json"] != null)
+            {
+                Logger.EnableBatchMode();
+                json = true;
+            }
 
             // Turn on debug messages if requested
             if (Args["debug"] != null)
@@ -139,7 +169,7 @@ namespace windiskhelper
                     Logger.Info("Successfully added portal.");
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     if (e.ErrorCode == (uint)MicrosoftInitiator.ISCSI_ERROR_CODES.ISDSC_CONNECTION_FAILED)
                     {
@@ -163,7 +193,7 @@ namespace windiskhelper
                     Logger.Info("Successfully removed portal.");
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Remove portal failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -177,7 +207,7 @@ namespace windiskhelper
                 {
                     portal_list = msinit.GetAllPortals();
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("List portals failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -187,7 +217,11 @@ namespace windiskhelper
                 foreach (string portal in portal_list)
                 {
                     Logger.Info(portal);
+                    if (batch)
+                        Console.WriteLine(portal);
                 }
+                if (json)
+                    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(portal_list, Newtonsoft.Json.Formatting.Indented));
                 Environment.Exit(EXIT_SUCCESS);
             }
             else if (Args["refresh_targets"] != null)
@@ -209,7 +243,7 @@ namespace windiskhelper
                     Logger.Info("Successfully refreshed targets.");
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Refresh failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -218,7 +252,7 @@ namespace windiskhelper
             }
             else if (Args["list_targets"] != null)
             {
-                List<MicrosoftInitiator.TargetInfo> target_list = new List<MicrosoftInitiator.TargetInfo>();
+                List<MicrosoftInitiator.IscsiTargetInfo> target_list = new List<MicrosoftInitiator.IscsiTargetInfo>();
 
                 try
                 {
@@ -231,14 +265,14 @@ namespace windiskhelper
                         target_list = msinit.GetAllTargets();
                     }
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Listing targets failed: " + e.Message);
                     LogExceptionDetail(e);
                     Environment.Exit(EXIT_FAIL);
                 }
 
-                foreach (MicrosoftInitiator.TargetInfo target in target_list)
+                foreach (MicrosoftInitiator.IscsiTargetInfo target in target_list)
                 {
                     StringBuilder display_str = new StringBuilder();
                     display_str.Append(target.TargetPortal);
@@ -249,11 +283,13 @@ namespace windiskhelper
                     if (batch)
                         Console.WriteLine(display_str.ToString());
                 }
+                if (json)
+                    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(target_list, Newtonsoft.Json.Formatting.Indented));
                 Environment.Exit(EXIT_SUCCESS);
             }
             else if (Args["list_sessions"] != null)
             {
-                List<MicrosoftInitiator.SessionInfo> session_list = new List<MicrosoftInitiator.SessionInfo>();
+                List<MicrosoftInitiator.IscsiSessionInfo> session_list = new List<MicrosoftInitiator.IscsiSessionInfo>();
                 bool include_boot = false;
                 if (Args["include_boot_vol"] != null)
                     include_boot = true;
@@ -270,14 +306,14 @@ namespace windiskhelper
                         session_list = msinit.GetAllSessions(include_boot);
                     }
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Listing sessions failed: " + e.Message);
                     LogExceptionDetail(e);
                     Environment.Exit(EXIT_FAIL);
                 }
 
-                foreach (MicrosoftInitiator.SessionInfo session in session_list)
+                foreach (MicrosoftInitiator.IscsiSessionInfo session in session_list)
                 {
                     StringBuilder display_str = new StringBuilder();
                     display_str.Append(session.SessionId + " => ");
@@ -289,6 +325,8 @@ namespace windiskhelper
                     if (batch)
                         Console.WriteLine(display_str.ToString());
                 }
+                if (json)
+                    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(session_list, Newtonsoft.Json.Formatting.Indented));
                 Environment.Exit(EXIT_SUCCESS);
             }
             else if (Args["login_targets"] != null)
@@ -333,7 +371,7 @@ namespace windiskhelper
                     Logger.Info("Successfully logged in to all targets.");
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Login targets failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -368,7 +406,7 @@ namespace windiskhelper
                     Logger.Info("Successfully logged out of all targets.");
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Logout targets failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -389,7 +427,7 @@ namespace windiskhelper
                         disk_list = msinit.GetAllDiskInfo();
                     }
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Listing disks failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -402,6 +440,9 @@ namespace windiskhelper
                     if (batch)
                         Console.WriteLine(disk.TargetName + " => " + disk.LegacyDeviceName + ", SectorSize: " + disk.SectorSize + ", Portal: " + disk.PortalAddress + ", MountPoint: " + disk.MountPoint);
                 }
+                if (json)
+                    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(disk_list, Newtonsoft.Json.Formatting.Indented));
+
             }
             else if (Args["online_disks"] != null)
             {
@@ -410,7 +451,7 @@ namespace windiskhelper
                     Logger.Info("Onlining/signaturing all disks");
                     msinit.OnlineAllDisks();
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Onlining disks failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -442,7 +483,7 @@ namespace windiskhelper
                     Logger.Info("Successfully set up disks");
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Setup disks failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -469,7 +510,7 @@ namespace windiskhelper
                     Logger.Info("Successfully set up disks");
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Setup disks failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -493,7 +534,7 @@ namespace windiskhelper
                     Logger.Info("Successfully removed mounts");
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Unmount disks failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -504,13 +545,16 @@ namespace windiskhelper
             {
                 try
                 {
-                    string node_name = msinit.GetInitiatorName();
+                    string node_name = msinit.GetIscsiInitiatorName();
                     Logger.Info(node_name);
                     if (batch)
                         Console.WriteLine(node_name);
+                    if (json)
+                        Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(node_name, Newtonsoft.Json.Formatting.Indented));
+
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Querying initiator name failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -521,10 +565,10 @@ namespace windiskhelper
             {
                 try
                 {
-                    msinit.SetInitiatorName(Args["name"]);
+                    msinit.SetIscsiInitiatorName(Args["name"]);
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Setting initiator name failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -535,10 +579,10 @@ namespace windiskhelper
             {
                 try
                 {
-                    msinit.SetInitiatorName(null);
+                    msinit.SetIscsiInitiatorName(null);
                     Environment.Exit(EXIT_SUCCESS);
                 }
-                catch (MicrosoftInitiator.IscsiException e)
+                catch (MicrosoftInitiator.InitiatorException e)
                 {
                     Logger.Error("Setting initiator name failed: " + e.Message);
                     LogExceptionDetail(e);
@@ -552,28 +596,28 @@ namespace windiskhelper
                     Logger.Info("Logging out of all active targets");
                     msinit.LogoutAllTargets(true);
                 }
-                catch (MicrosoftInitiator.IscsiException) { }
+                catch (MicrosoftInitiator.InitiatorException) { }
 
                 try
                 {
                     Logger.Info("Removing all target portals");
                     msinit.RemoveAllTargetPortals();
                 }
-                catch (MicrosoftInitiator.IscsiException) { }
+                catch (MicrosoftInitiator.InitiatorException) { }
 
                 try
                 {
                     Logger.Info("Clearing target list");
                     msinit.RefreshAllPortals();
                 }
-                catch (MicrosoftInitiator.IscsiException) { }
+                catch (MicrosoftInitiator.InitiatorException) { }
 
                 try
                 {
                     Logger.Info("Removing persistent logins");
                     msinit.RemovePersistentLogins();
                 }
-                catch (MicrosoftInitiator.IscsiException) { }
+                catch (MicrosoftInitiator.InitiatorException) { }
             }
             else if (Args["dump_disk_info"] != null)
             {
@@ -583,7 +627,13 @@ namespace windiskhelper
                     Logger.Debug(msinit.ToString());
                     msinit.DebugShowAllDiskDevices();
                 }
-                catch (MicrosoftInitiator.IscsiException) { }
+                catch (MicrosoftInitiator.InitiatorException e)
+                {
+                    Logger.Error("Getting VDS info failed: " + e.Message);
+                    LogExceptionDetail(e);
+                    Environment.Exit(EXIT_FAIL);
+                }
+
             }
             else if (Args["dump_vds_prov_info"] != null)
             {
@@ -591,13 +641,89 @@ namespace windiskhelper
                 {
                     msinit.DebugShowAllVDSProviders();
                 }
-                catch (MicrosoftInitiator.IscsiException) { }
+                catch (MicrosoftInitiator.InitiatorException e)
+                {
+                    Logger.Error("Getting VDS info failed: " + e.Message);
+                    LogExceptionDetail(e);
+                    Environment.Exit(EXIT_FAIL);
+                }
+
+            }
+
+            else if (Args["show_wwpns"] != null)
+            {
+                List<string> wwns = new List<string>();
+                try
+                {
+                    wwns = msinit.GetWWPNs();
+                }
+                catch (MicrosoftInitiator.InitiatorException e)
+                {
+                    Logger.Error("Getting WWNs: " + e.Message);
+                    LogExceptionDetail(e);
+                    Environment.Exit(EXIT_FAIL);
+                }
+
+                Logger.Info("WWPNs: [" + String.Join(", ", wwns.ToArray()) + "]");
+                if (batch)
+                    Console.WriteLine(String.Join("\n", wwns.ToArray()));
+                else if (json)
+                {
+                    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(wwns, Newtonsoft.Json.Formatting.Indented));
+                }
+            }
+            else if (Args["show_hbas"] != null)
+            {
+                List<MicrosoftInitiator.FcHbaInfo> hbas = new List<MicrosoftInitiator.FcHbaInfo>();
+                try
+                {
+                    hbas = msinit.GetFcHbaInfo();
+                }
+                catch (MicrosoftInitiator.InitiatorException e)
+                {
+                    Logger.Error("Getting HBA info failed: " + e.Message);
+                    LogExceptionDetail(e);
+                    Environment.Exit(EXIT_FAIL);
+                }
+
+                Logger.Info("Found " + hbas.Count + " HBAs");
+                foreach (var h in hbas)
+                {
+                    Logger.Info("");
+                    Logger.Info("  Model:           " + h.Model);
+                    Logger.Info("  Description:     " + h.Description);
+                    Logger.Info("  WWN:             " + h.WWPN);
+                    Logger.Info("  Speed:           " + h.Speed);
+                    Logger.Info("  PortState:       " + h.PortState);
+                    Logger.Info("  DriverVersion:   " + h.DriverVersion);
+                    Logger.Info("  FirmwareVersion: " + h.FirmwareVersion);
+                }
+                if (batch)
+                {
+                    int index = 0;
+                    foreach (var h in hbas)
+                    {
+                        Console.WriteLine("HBA " + index);
+                        Console.WriteLine("  Model:           " + h.Model);
+                        Console.WriteLine("  Description:     " + h.Description);
+                        Console.WriteLine("  WWN:             " + h.WWPN);
+                        Console.WriteLine("  Speed:           " + h.Speed);
+                        Console.WriteLine("  PortState:       " + h.PortState);
+                        Console.WriteLine("  DriverVersion:   " + h.DriverVersion);
+                        Console.WriteLine("  FirmwareVersion: " + h.FirmwareVersion);
+                        index++;
+                    }
+                }
+                else if (json)
+                {
+                    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(hbas, Newtonsoft.Json.Formatting.Indented));
+                }
             }
 
             Environment.Exit(EXIT_SUCCESS);
         }
 
-        static void LogExceptionDetail(MicrosoftInitiator.IscsiException e)
+        static void LogExceptionDetail(MicrosoftInitiator.InitiatorException e)
         {
             Logger.Debug("Error Code: " + e.Message);
             Logger.Debug(String.Format("HRESULT: 0x{0:X}", e.ErrorCode));
@@ -609,9 +735,9 @@ namespace windiskhelper
             Console.WriteLine();
             Console.WriteLine("Usage: " + Assembly.GetEntryAssembly().GetName().Name + ".exe <verb> [options] [connection parameters]");
             Console.WriteLine();
-            Console.WriteLine("iSCSI helper for the Microsoft iSCSI Initiator");
+            Console.WriteLine("Helper for the Microsoft iSCSI/FC Initiators");
             Console.WriteLine();
-            Console.WriteLine("Verbs:");
+            Console.WriteLine("iSCSI Verbs:");
             Console.WriteLine("  --show_initiatorname  Display the current initiator IQN");
             Console.WriteLine("  --set_initiatorname   Change the current initiator IQN");
             Console.WriteLine("  --default_initiatorname   Change the current initiator IQN to the default");
@@ -632,6 +758,21 @@ namespace windiskhelper
             Console.WriteLine("                        portal_address");
             Console.WriteLine("  --logout_targets      Log out of connected targets. Optionally include");
             Console.WriteLine("                        portal_address");
+            Console.WriteLine();
+            Console.WriteLine("iSCSI Options:");
+            Console.WriteLine("  --portal_address      The target portal address to use for the operation");
+            Console.WriteLine("  --chap_user           The CHAP username to use for the operation");
+            Console.WriteLine("  --chap_secret         The CHAP initiator secret to use for the operation");
+            Console.WriteLine("  --persistent          Create a persistent login (reconnect after reboot) to");
+            Console.WriteLine("                        the targets");
+            Console.WriteLine("  --include_boot_vol    Include the iSCSI boot volume in whatever action you are trying");
+            Console.WriteLine("                        to perform.  This only works for a narrow list of things");
+            Console.WriteLine();
+            Console.WriteLine("Fibre Channel Verbs:");
+            Console.WriteLine("  --show_wwpns          Display the current initiator WWPNs");
+            Console.WriteLine("  --show_hbas           Display the installed HBA info");
+            Console.WriteLine();
+            Console.WriteLine("Disk Management Verbs:");
             Console.WriteLine("  --list_disks          Display a list of targets and their corresponding");
             Console.WriteLine("                        devices and mount points. Optionally include");
             Console.WriteLine("                        portal_address");
@@ -648,21 +789,15 @@ namespace windiskhelper
             Console.WriteLine("  --dump_vds_prov_info  Print out as much information as possible about the VDS");
             Console.WriteLine("                        providers on the system");
             Console.WriteLine();
-            Console.WriteLine("Options:");
-            Console.WriteLine("  --portal_address      The target portal address to use for the operation");
-            Console.WriteLine("  --chap_user           The CHAP username to use for the operation");
-            Console.WriteLine("  --chap_secret         The CHAP initiator secret to use for the operation");
-            Console.WriteLine("  --persistent          Create a persistent login (reconnect after reboot) to");
-            Console.WriteLine("                        the targets");
+            Console.WriteLine("Disk Management Options:");
             Console.WriteLine("  --relabel             Update the volume label on existing partitions to match");
             Console.WriteLine("                        the IQN of the volume");
             Console.WriteLine("  --force_mountpoints   Remove automount drive letters and remount with mount point");
             Console.WriteLine("  --force_unmount       Forcibly unmount volumes before logging out of targets");
-            Console.WriteLine("  --include_boot_vol    Include the iSCSI boot volume in whatever action you are trying");
-            Console.WriteLine("                        to perform.  This only works for a narrow list of things");
             Console.WriteLine();
             Console.WriteLine("Display Options:");
             Console.WriteLine("  --batch               Minimize the output (useful when being wrapped in a script)");
+            Console.WriteLine("  --json                Format output as JSON (useful when being wrapped in a script)");
             Console.WriteLine();
             Console.WriteLine("Connection Parameters:");
             Console.WriteLine("  --client_ip           The IP address (or hostname if DNS is working) of the system");
@@ -717,6 +852,9 @@ namespace windiskhelper
                 "batch",
                 "list_sessions",
                 "include_boot_vol",
+                "json",
+                "show_wwpns",
+                "show_hbas",
             };
 
             // Check for extra/misspelled args

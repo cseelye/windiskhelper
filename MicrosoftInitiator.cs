@@ -10,6 +10,7 @@ using System.Linq;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Text;
+using System.ComponentModel;
 
 using System.Security.Principal; // WindowsImpersonationContext
 using System.Security.Permissions; // PermissionSetAttribute
@@ -157,7 +158,7 @@ namespace windiskhelper
                 if (false == bImpersonated)
                 {
                     int nErrorCode = Marshal.GetLastWin32Error();
-                    throw new IscsiException((new System.ComponentModel.Win32Exception(nErrorCode)).Message);
+                    throw new InitiatorException((new System.ComponentModel.Win32Exception(nErrorCode)).Message);
                 }
 
                 bool bRetVal = DuplicateToken(pExistingTokenHandle, (int)SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation, ref pDuplicateTokenHandle);
@@ -166,7 +167,7 @@ namespace windiskhelper
                 if (false == bRetVal)
                 {
                     int nErrorCode = Marshal.GetLastWin32Error();
-                    throw new IscsiException((new System.ComponentModel.Win32Exception(nErrorCode)).Message);
+                    throw new InitiatorException((new System.ComponentModel.Win32Exception(nErrorCode)).Message);
                 }
                 else
                 {
@@ -235,11 +236,11 @@ namespace windiskhelper
             }
             catch (UnauthorizedAccessException e)
             {
-                throw new IscsiException("Invalid username/password", e);
+                throw new InitiatorException("Invalid username/password", e);
             }
             catch (ManagementException e)
             {
-                throw ManagementExceptionToIscsiException(e);
+                throw ManagementExceptionToInitiatorException(e);
             }
             catch (COMException e)
             {
@@ -329,7 +330,7 @@ namespace windiskhelper
                 }
                 if (dynamic_disk_provider == null)
                 {
-                    throw new IscsiException("Could not find dynamic disk provider");
+                    throw new InitiatorException("Could not find dynamic disk provider");
                 }
             }
             finally
@@ -373,7 +374,7 @@ namespace windiskhelper
                 }
                 if (basic_disk_provider == null)
                 {
-                    throw new IscsiException("Could not find basic disk provider");
+                    throw new InitiatorException("Could not find basic disk provider");
                 }
             }
             finally
@@ -390,23 +391,23 @@ namespace windiskhelper
         #endregion
 
         #region Exceptions/Errors and InfoTypes
-        public class IscsiException : Exception
+        public class InitiatorException : Exception
         {
             public UInt32 ErrorCode { get; set; }
 
-            public IscsiException(string message) : base(message) { }
-            public IscsiException(string message, UInt32 pErrorCode)
+            public InitiatorException(string message) : base(message) { }
+            public InitiatorException(string message, UInt32 pErrorCode)
                 : base(message)
             {
                 this.ErrorCode = pErrorCode;
             }
-            public IscsiException(string message, Exception inner) : base(message, inner) { }
-            public IscsiException(string message, UInt32 pErrorCode, Exception inner)
+            public InitiatorException(string message, Exception inner) : base(message, inner) { }
+            public InitiatorException(string message, UInt32 pErrorCode, Exception inner)
                 : base(message, inner)
             {
                 this.ErrorCode = pErrorCode;
             }
-            public IscsiException(string message, UInt32? pErrorCode, Exception inner)
+            public InitiatorException(string message, UInt32? pErrorCode, Exception inner)
                 : base(message, inner)
             {
                 if (pErrorCode != null)
@@ -419,7 +420,7 @@ namespace windiskhelper
             //    : base(info, context) { }
         }
 
-        public class TargetInfo
+        public class IscsiTargetInfo
         {
             public string DiscoveryMechanism { get; set; }
             public string InitiatorName { get; set; }
@@ -429,7 +430,7 @@ namespace windiskhelper
             public bool IsLoggedIn { get; set; }
         }
 
-        public class SessionInfo
+        public class IscsiSessionInfo
         {
             public string SessionId { get; set; }
             public string InitiatorIqn { get; set; }
@@ -440,6 +441,11 @@ namespace windiskhelper
             public UInt16 TargetPort { get; set; }
         }
 
+        public enum TargetType
+        {
+            iSCSI,
+            FibreChannel
+        }
         public class DiskInfo
         {
             public string TargetName { get; set; }
@@ -448,6 +454,18 @@ namespace windiskhelper
             public string LegacyDeviceName { get; set; }
             public string MountPoint { get; set; }
             public int SectorSize { get; set; }
+            public TargetType TargetType { get; set; }
+        }
+
+        public class FcHbaInfo
+        {
+            public string WWPN { get; set; }
+            public string Speed { get; set; }
+            public string PortState { get; set; }
+            public string DriverVersion { get; set; }
+            public string FirmwareVersion { get; set; }
+            public string Model { get; set; }
+            public string Description { get; set; }
         }
 
         public enum ISCSI_AUTH_TYPES : uint
@@ -808,7 +826,156 @@ namespace windiskhelper
             VDS_E_VD_IS_BEING_ATTACHED = 0x80042937,
             VDS_E_VD_IS_BEING_DETACHED = 0x80042938,
         }
-        private static IscsiException ManagementExceptionToIscsiException(ManagementException e)
+
+        // from hbaapi.h in the Windows Driver DDK
+        public enum HBA_PORTSPEED : uint
+        {
+            [Description("Unknown")]
+            HBA_PORTSPEED_UNKNOWN = 0,    /* Unknown - transceiver incapable of reporting */
+            [Description("1Gb")]
+            HBA_PORTSPEED_1GBIT = 1,    /* 1 GBit/sec */
+            [Description("2Gb")]
+            HBA_PORTSPEED_2GBIT = 2,    /* 2 GBit/sec */
+            [Description("10Gb")]
+            HBA_PORTSPEED_10GBIT = 4,    /* 10 GBit/sec */
+            [Description("4Gb")]
+            HBA_PORTSPEED_4GBIT = 8,    /* 4 GBit/sec */
+            [Description("8Gb")]
+            HBA_FCPHYSPEED_8GBIT = 16,    /* 8 GBit/sec */
+            [Description("16Gb")]
+            HBA_FCPHYSPEED_16GBIT = 32,    /* 16 GBit/sec */
+            [Description("Not established")]
+            HBA_PORTSPEED_NOT_NEGOTIATE = (1 << 15) /* Speed not established */
+        }
+
+        // from hbaapi.h in the Windows Driver DDK
+        public enum HBA_PORTTYPE : uint
+        {
+            HBA_PORTTYPE_UNKNOWN = 1, /* Unknown */
+            HBA_PORTTYPE_OTHER = 2, /* Other */
+            HBA_PORTTYPE_NOTPRESENT = 3, /* Not present */
+            HBA_PORTTYPE_NPORT = 5, /* Fabric */
+            HBA_PORTTYPE_NLPORT = 6, /* Public Loop */
+            HBA_PORTTYPE_FLPORT = 7, /* Fabric on a Loop */
+            HBA_PORTTYPE_FPORT = 8, /* Fabric Port */
+            HBA_PORTTYPE_EPORT = 9, /* Fabric expansion port */
+            HBA_PORTTYPE_GPORT = 10, /* Generic Fabric Port */
+            HBA_PORTTYPE_LPORT = 20, /* Private Loop */
+            HBA_PORTTYPE_PTP = 21, /* Point to Point */
+            HBA_PORTTYPE_SASDEVICE = 30, /* SAS (SSP or STP) */
+            HBA_PORTTYPE_SATADEVICE = 31, /* SATA Device, i.e. Direct Attach SATA */
+            HBA_PORTTYPE_SASEXPANDER = 32, /* SAS Expander */
+        }
+
+        // from hbaapi.h in the Windows Driver DDK
+        public enum HBA_PORTSTATE : uint
+        {
+            [Description("Unknown")]
+            HBA_PORTSTATE_UNKNOWN = 1, /* Unknown */
+            [Description("Online")]
+            HBA_PORTSTATE_ONLINE = 2, /* Operational */
+            [Description("User Offline")]
+            HBA_PORTSTATE_OFFLINE = 3, /* User Offline */
+            [Description("Bypassed")]
+            HBA_PORTSTATE_BYPASSED = 4, /* Bypassed */
+            [Description("Diagnostics")]
+            HBA_PORTSTATE_DIAGNOSTICS = 5, /* In diagnostics mode */
+            [Description("Link down")]
+            HBA_PORTSTATE_LINKDOWN = 6, /* Link Down */
+            [Description("Error")]
+            HBA_PORTSTATE_ERROR = 7, /* Port Error */
+            [Description("Loopback")]
+            HBA_PORTSTATE_LOOPBACK = 8, /* Loopback */
+            [Description("Degraded")]
+            HBA_PORTSTATE_DEGRADED = 9, /* Degraded, but Operational mode */
+        }
+
+        // from hbaapi.h in the Windows Driver DDK
+        public enum HBA_STATUS : uint
+        {
+            HBA_STATUS_OK = 0,
+            HBA_STATUS_ERROR = 1,   /* Error */
+            HBA_STATUS_ERROR_NOT_SUPPORTED = 2,   /* Function not supported.*/
+            HBA_STATUS_ERROR_INVALID_HANDLE = 3,   /* invalid handle */
+            HBA_STATUS_ERROR_ARG = 4,   /* Bad argument */
+            HBA_STATUS_ERROR_ILLEGAL_WWN = 5,   /* WWN not recognized */
+            HBA_STATUS_ERROR_ILLEGAL_INDEX = 6,   /* Index not recognized */
+            HBA_STATUS_ERROR_MORE_DATA = 7,   /* Larger buffer required */
+            /* Information has changed since the last call to HBA_RefreshInformation */
+            HBA_STATUS_ERROR_STALE_DATA = 8,
+            /* SCSI Check Condition reported*/
+            HBA_STATUS_SCSI_CHECK_CONDITION = 9,
+            /* Adapter busy or reserved, retry may be effective*/
+            HBA_STATUS_ERROR_BUSY = 10,
+            /* Request timed out, retry may be effective */
+            HBA_STATUS_ERROR_TRY_AGAIN = 11,
+            /* Referenced HBA has been removed or deactivated */
+            HBA_STATUS_ERROR_UNAVAILABLE = 12,
+            /* The requested ELS was rejected  by the local adapter */
+            HBA_STATUS_ERROR_ELS_REJECT = 13,
+            /* The specified LUN is not provided  by the specified adapter */
+            HBA_STATUS_ERROR_INVALID_LUN = 14,
+            /* An incompatibility has been detected among the library and driver modules */
+            /* invoked which will cause one or more functions in the highest version */
+            /* that all support to operate incorrectly.  */
+            /* The differing function sets of software modules implementing different */
+            /* versions of the HBA API specification does not in itself constitute an */
+            /* incompatibility. */
+            /* Known interoperability bugs among supposedly compatible versions */
+            /* should be reported as incompatibilities, */
+            /* but not all such interoperability bugs may be known. */
+            /* This value may be returned by any function which calls a */
+            /* Vendor Specific Library,  and by HBA_LoadLibrary and HBA_GetAdapterName. */
+            HBA_STATUS_ERROR_INCOMPATIBLE = 15,
+            /* Multiple adapters have a matching WWN. */
+            /* This could occur if the NodeWWN of multiple adapters is identical. */
+            HBA_STATUS_ERROR_AMBIGUOUS_WWN = 16,
+            /* A persistent binding request included a bad local SCSI bus number */
+            HBA_STATUS_ERROR_LOCAL_BUS = 17,
+            /* A persistent binding request included a bad local SCSI target number */
+            HBA_STATUS_ERROR_LOCAL_TARGET = 18,
+            /* A persistent binding request included a bad local SCSI logical unit number */
+            HBA_STATUS_ERROR_LOCAL_LUN = 19,
+            /* A persistent binding set request included */
+            /* a local SCSI ID that was already bound */
+            HBA_STATUS_ERROR_LOCAL_SCSIID_BOUND = 20,
+            /* A persistent binding request included a bad or unlocatable FCP Target FCID */
+            HBA_STATUS_ERROR_TARGET_FCID = 21,
+            /* A persistent binding request included a bad FCP Target Node WWN */
+            HBA_STATUS_ERROR_TARGET_NODE_WWN = 22,
+            /* A persistent binding request included a bad FCP Target Port WWN */
+            HBA_STATUS_ERROR_TARGET_PORT_WWN = 23,
+            /* A persistent binding request included */
+            /* an FCP Logical Unit Number not defined by the identified Target*/
+            HBA_STATUS_ERROR_TARGET_LUN = 24,
+            /* A persistent binding request included */
+            /* an undefined or otherwise inaccessible Logical Unit Unique Identifier */
+            HBA_STATUS_ERROR_TARGET_LUID = 25,
+            /* A persistent binding remove request included */
+            /* a binding which did not match a binding established by the specified port */
+            HBA_STATUS_ERROR_NO_SUCH_BINDING = 26,
+            /* A SCSI command was requested to an Nx_Port that was not a SCSI Target Port */
+            HBA_STATUS_ERROR_NOT_A_TARGET = 27,
+            /* A request was made concerning an unsupported FC-4 protocol */
+            HBA_STATUS_ERROR_UNSUPPORTED_FC4 = 28,
+            /* A request was made to enable unimplemented capabilities for a port */
+            HBA_STATUS_ERROR_INCAPABLE = 29,
+            /* A SCSI function was rejected to prevent causing */
+            /* a SCSI overlapped command condition (see SAM-3) */
+            HBA_STATUS_ERROR_TARGET_BUSY = 30,
+            /* A call was made to HBA_FreeLibrary when no library was loaded */
+            HBA_STATUS_ERROR_NOT_LOADED = 31,
+            /* A call was made to HBA_LoadLibrary when a library was already loaded */
+            HBA_STATUS_ERROR_ALREADY_LOADED = 32,
+            /* The Address Identifier specified in a call to HBA_SendRNIDV2 */
+            /* violates access control rules for that call */
+            HBA_STATUS_ERROR_ILLEGAL_FCID = 33,
+            HBA_STATUS_ERROR_NOT_ASCSIDEVICE = 34,
+            HBA_STATUS_ERROR_INVALID_PROTOCOL_TYPE = 35,
+            HBA_STATUS_ERROR_BAD_EVENT_TYPE = 36,
+        }
+
+        private static InitiatorException ManagementExceptionToInitiatorException(ManagementException e)
         {
             
             // Look for a status code
@@ -829,9 +996,9 @@ namespace windiskhelper
                         if (!string.IsNullOrEmpty(error_description))
                         {
                             if (error_code == 1717) // iSCSI initiator service is not running
-                                return new IscsiException(error_description + " Is the iSCSI initiator running?", error_code, e);
+                                return new InitiatorException(error_description + " Is the iSCSI initiator running?", error_code, e);
                             else
-                                return new IscsiException(error_description, error_code, e);
+                                return new InitiatorException(error_description, error_code, e);
                         }
 
                         // See if this is an iSCSI error
@@ -840,7 +1007,7 @@ namespace windiskhelper
                         {
                             iscsi_error_string = Enum.GetName(typeof(ISCSI_ERROR_CODES), error_code);
                             if (!String.IsNullOrEmpty(iscsi_error_string))
-                                return new IscsiException(iscsi_error_string, error_code, e);
+                                return new InitiatorException(iscsi_error_string, error_code, e);
                         }
                         catch (ArgumentException) { }
 
@@ -857,7 +1024,7 @@ namespace windiskhelper
                             type = prop.Type.ToString();
                             Logger.Debug("    " + prop.Name + " => " + value + "  (" + type + ")");
                         }
-                        return new IscsiException("Unknown error " + error_code, error_code, e);
+                        return new InitiatorException("Unknown error " + error_code, error_code, e);
                     }
                 }
             }
@@ -865,7 +1032,7 @@ namespace windiskhelper
             // Look for recognizable WMI errors other than the dreaded "Generic failure"
             if (e.ErrorCode != ManagementStatus.Failed)
             {
-                return new IscsiException(e.ErrorCode.ToString(), e);
+                return new InitiatorException(e.ErrorCode.ToString(), e);
             }
 
             // If all else fails, call it an 'Unknown error' and log all the info we have
@@ -874,11 +1041,11 @@ namespace windiskhelper
             {
                 Logger.Debug("    " + prop.Name + " => " + prop.Value.ToString() + "  (" + prop.Type.ToString() + ")");
             }
-            return new IscsiException("Unknown error", e);
+            return new InitiatorException("Unknown error", e);
             
         }
 
-        private static IscsiException VdsExceptionToIscsiException(VdsException e)
+        private static InitiatorException VdsExceptionToInitiatorException(VdsException e)
         {
             if (e.InnerException != null)
                 return ComExceptionToIscsiException((COMException)e.InnerException);
@@ -898,19 +1065,19 @@ namespace windiskhelper
                     catch (ArgumentException) { }
                     if (!String.IsNullOrEmpty(error_string))
                     {
-                        return new IscsiException(error_string, hresult, e);
+                        return new InitiatorException(error_string, hresult, e);
                     }
                 }
             }
-            return new IscsiException(e.Message, e);
+            return new InitiatorException(e.Message, e);
         }
 
-        private static IscsiException ComExceptionToIscsiException(COMException e)
+        private static InitiatorException ComExceptionToIscsiException(COMException e)
         {
             // See if the error is a standard Win32 error
             System.ComponentModel.Win32Exception w32ex = new System.ComponentModel.Win32Exception(e.ErrorCode);
             if (!w32ex.Message.StartsWith("Unknown error"))
-                return new IscsiException(w32ex.Message, (uint)e.ErrorCode, e);
+                return new InitiatorException(w32ex.Message, (uint)e.ErrorCode, e);
 
             // See if the error is a known VDS error
             uint hresult = (uint)e.ErrorCode;
@@ -924,7 +1091,7 @@ namespace windiskhelper
                 // If all else fails, call it an unknown error
                 error_string = "Unknown error";
             }
-            return new IscsiException(error_string, hresult, e);
+            return new InitiatorException(error_string, hresult, e);
         }
         #endregion
 
@@ -956,7 +1123,7 @@ namespace windiskhelper
             }
             catch (ManagementException e)
             {
-                throw ManagementExceptionToIscsiException(e);
+                throw ManagementExceptionToInitiatorException(e);
             }
 
             return result_list;
@@ -978,7 +1145,7 @@ namespace windiskhelper
                 ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
                 if (device_info == null || device_info.Length <= 0)
                 {
-                    throw new IscsiException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
+                    throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
                 }
 
                 // Weak check for boot/system volume
@@ -1079,7 +1246,7 @@ namespace windiskhelper
                     ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
                     if (device_info == null || device_info.Length <= 0)
                     {
-                        throw new IscsiException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
+                        throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
                     }
 
                     string device_name = device_info[0]["LegacyName"] as String;
@@ -1105,7 +1272,7 @@ namespace windiskhelper
             }
             catch (ManagementException e)
             {
-                throw ManagementExceptionToIscsiException(e);
+                throw ManagementExceptionToInitiatorException(e);
             }
             UInt32 return_code = (UInt32)return_params["ReturnValue"];
             if (return_code != 0)
@@ -1121,7 +1288,7 @@ namespace windiskhelper
                 }
                 if (String.IsNullOrEmpty(error_desc))
                     error_desc = "Unknown iSCSI error";
-                throw new IscsiException(error_desc, return_code);
+                throw new InitiatorException(error_desc, return_code);
             }
         }
 
@@ -1151,7 +1318,7 @@ namespace windiskhelper
             }
             catch (ManagementException e)
             {
-                throw ManagementExceptionToIscsiException(e);
+                throw ManagementExceptionToInitiatorException(e);
             }
             UInt32 return_code = (UInt32)return_params["ReturnValue"];
             if (return_code != 0)
@@ -1167,7 +1334,7 @@ namespace windiskhelper
                 }
                 if (String.IsNullOrEmpty(error_desc))
                     error_desc = "Unknown iSCSI error";
-                throw new IscsiException(error_desc, return_code);
+                throw new InitiatorException(error_desc, return_code);
             }
             if (pPersistent)
             {
@@ -1182,7 +1349,7 @@ namespace windiskhelper
                 }
                 catch (ManagementException e)
                 {
-                    throw ManagementExceptionToIscsiException(e);
+                    throw ManagementExceptionToInitiatorException(e);
                 }
                 return_code = (UInt32)return_params["ReturnValue"];
                 if (return_code != 0)
@@ -1198,7 +1365,7 @@ namespace windiskhelper
                     }
                     if (String.IsNullOrEmpty(error_desc))
                         error_desc = "Unknown iSCSI error";
-                    throw new IscsiException(error_desc, return_code);
+                    throw new InitiatorException(error_desc, return_code);
                 }
             }
         }
@@ -1212,7 +1379,7 @@ namespace windiskhelper
                 if (letter.Used == 0)
                     return new String(new char[] { letter.Letter });
             }
-            throw new IscsiException("No unused drive letters available");
+            throw new InitiatorException("No unused drive letters available");
         }
 
         private void RemoveMountsHelper(Dictionary<string, string> pDeviceToVolumeMap)
@@ -1309,7 +1476,7 @@ namespace windiskhelper
                         }
                         catch (VdsException e)
                         {
-                            throw VdsExceptionToIscsiException(e);
+                            throw VdsExceptionToInitiatorException(e);
                         }
                     }
                     Thread.Sleep(1000);
@@ -1329,7 +1496,7 @@ namespace windiskhelper
                         }
                         catch (VdsException e)
                         {
-                            throw VdsExceptionToIscsiException(e);
+                            throw VdsExceptionToInitiatorException(e);
                         }
                     }
                 }
@@ -1479,7 +1646,7 @@ namespace windiskhelper
                             Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
                         }
                     }
-                    
+
                     // Partition and format the disk if it isn't already
                     if (disk.Partitions.Count <= 0)
                     {
@@ -1495,7 +1662,7 @@ namespace windiskhelper
                         }
                         catch (VdsException e)
                         {
-                            throw VdsExceptionToIscsiException(e);
+                            throw VdsExceptionToInitiatorException(e);
                         }
 
                         // Wait for partitioning to finish
@@ -1524,7 +1691,7 @@ namespace windiskhelper
                         }
                         catch (VdsException e)
                         {
-                            throw VdsExceptionToIscsiException(e);
+                            throw VdsExceptionToInitiatorException(e);
                         }
                     }
 
@@ -1567,7 +1734,7 @@ namespace windiskhelper
                                 }
                                 catch (ManagementException e)
                                 {
-                                    throw ManagementExceptionToIscsiException(e);
+                                    throw ManagementExceptionToInitiatorException(e);
                                 }
                                 finally
                                 {
@@ -1870,7 +2037,7 @@ namespace windiskhelper
             }
             catch (ManagementException e)
             {
-                throw ManagementExceptionToIscsiException(e);
+                throw ManagementExceptionToInitiatorException(e);
             }
 
             if (pRefreshTargetList)
@@ -1903,7 +2070,7 @@ namespace windiskhelper
             ManagementObjectCollection portal_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SendTargetPortalClass WHERE PortalAddress = '" + pPortalAddress.ToString() + "'");
             if (portal_list.Count <= 0)
             {
-                throw new IscsiException("Could not find portal '" + pPortalAddress + "'");
+                throw new InitiatorException("Could not find portal '" + pPortalAddress + "'");
             }
 
             foreach (ManagementObject portal in portal_list)
@@ -1915,7 +2082,7 @@ namespace windiskhelper
                 }
                 catch (ManagementException e)
                 {
-                    throw ManagementExceptionToIscsiException(e);
+                    throw ManagementExceptionToInitiatorException(e);
                 }
 
                 // If for some reason we found more than one portal with the requested address, break so we only operate on the first one
@@ -1943,7 +2110,7 @@ namespace windiskhelper
                 }
                 catch (ManagementException e)
                 {
-                    throw ManagementExceptionToIscsiException(e);
+                    throw ManagementExceptionToInitiatorException(e);
                 }
             }
         }
@@ -1960,7 +2127,7 @@ namespace windiskhelper
                 }
                 catch (ManagementException e)
                 {
-                    throw ManagementExceptionToIscsiException(e);
+                    throw ManagementExceptionToInitiatorException(e);
                 }
             }
             return;
@@ -1978,7 +2145,7 @@ namespace windiskhelper
             ManagementObjectCollection portal_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SendTargetPortalClass WHERE PortalAddress = '" + pPortalAddress.ToString() + "'");
             if (portal_list.Count <= 0)
             {
-                throw new IscsiException("Could not find portal '" + pPortalAddress + "'");
+                throw new InitiatorException("Could not find portal '" + pPortalAddress + "'");
             }
 
             foreach (ManagementObject portal in portal_list)
@@ -1994,7 +2161,7 @@ namespace windiskhelper
                 }
                 catch (ManagementException e)
                 {
-                    throw ManagementExceptionToIscsiException(e);
+                    throw ManagementExceptionToInitiatorException(e);
                 }
 
                 // If for some reason we found more than one portal with the requested address, break so we only operate on the first one
@@ -2002,7 +2169,7 @@ namespace windiskhelper
             }
         }
 
-        public List<TargetInfo> GetLoggedInTargets()
+        public List<IscsiTargetInfo> GetLoggedInTargets()
         {
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
@@ -2016,7 +2183,7 @@ namespace windiskhelper
                     targets_with_sessions.Add(target_name);
             }
 
-            List<TargetInfo> targets_to_return = new List<TargetInfo>();
+            List<IscsiTargetInfo> targets_to_return = new List<IscsiTargetInfo>();
 
             // Get the target objects from the initiator
             ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
@@ -2027,7 +2194,7 @@ namespace windiskhelper
                 if (!targets_with_sessions.Contains(target["TargetName"] as String))
                     continue;
 
-                TargetInfo target_info = new TargetInfo();
+                IscsiTargetInfo target_info = new IscsiTargetInfo();
                 target_info.InitiatorName = target["InitiatorName"] as String;
                 target_info.TargetFlags = (UInt32)target["TargetFlags"];
                 target_info.TargetIqn = target["TargetName"] as String;
@@ -2053,7 +2220,7 @@ namespace windiskhelper
             return targets_to_return;
         }
 
-        public List<TargetInfo> GetLoggedOutTargets()
+        public List<IscsiTargetInfo> GetLoggedOutTargets()
         {
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
@@ -2067,7 +2234,7 @@ namespace windiskhelper
                     targets_with_sessions.Add(target_name);
             }
 
-            List<TargetInfo> targets_to_return = new List<TargetInfo>();
+            List<IscsiTargetInfo> targets_to_return = new List<IscsiTargetInfo>();
 
             // Get the target objects from the initiator
             ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
@@ -2078,7 +2245,7 @@ namespace windiskhelper
                 if (targets_with_sessions.Contains(target["TargetName"] as String))
                     continue;
 
-                TargetInfo target_info = new TargetInfo();
+                IscsiTargetInfo target_info = new IscsiTargetInfo();
                 target_info.InitiatorName = target["InitiatorName"] as String;
                 target_info.TargetFlags = (UInt32)target["TargetFlags"];
                 target_info.TargetIqn = target["TargetName"] as String;
@@ -2104,7 +2271,7 @@ namespace windiskhelper
             return targets_to_return;
         }
         
-        public List<TargetInfo> GetAllTargets()
+        public List<IscsiTargetInfo> GetAllTargets()
         {
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
@@ -2118,14 +2285,14 @@ namespace windiskhelper
                     targets_with_sessions.Add(target_name);
             }
 
-            List<TargetInfo> targets_to_return = new List<TargetInfo>();
+            List<IscsiTargetInfo> targets_to_return = new List<IscsiTargetInfo>();
 
             // Get the target objects from the initiator
             ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
 
             foreach (ManagementObject target in target_list)
             {
-                TargetInfo target_info = new TargetInfo();
+                IscsiTargetInfo target_info = new IscsiTargetInfo();
                 target_info.InitiatorName = target["InitiatorName"] as String;
                 target_info.TargetFlags = (UInt32)target["TargetFlags"];
                 target_info.TargetIqn = target["TargetName"] as String;
@@ -2151,12 +2318,12 @@ namespace windiskhelper
             return targets_to_return;
         }
 
-        public List<SessionInfo> GetAllSessions(bool pIncludeBootVolume = false)
+        public List<IscsiSessionInfo> GetAllSessions(bool pIncludeBootVolume = false)
         {
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
 
-            List<SessionInfo> sessions_to_return = new List<SessionInfo>();
+            List<IscsiSessionInfo> sessions_to_return = new List<IscsiSessionInfo>();
             foreach (ManagementObject session in session_list)
             {
                 // Make sure this is not the boot volume
@@ -2178,7 +2345,7 @@ namespace windiskhelper
                         continue;
                 }
 
-                SessionInfo sess = new SessionInfo();
+                IscsiSessionInfo sess = new IscsiSessionInfo();
                 sess.InitiatorIqn = session["InitiatorName"] as string;
                 sess.SessionId = session["SessionId"] as string;
                 sess.TargetIqn = session["TargetName"] as string;
@@ -2197,7 +2364,7 @@ namespace windiskhelper
             return sessions_to_return;
         }
 
-        public List<TargetInfo> GetTargetsOnPortal(String pPortalAddress)
+        public List<IscsiTargetInfo> GetTargetsOnPortal(String pPortalAddress)
         {
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
@@ -2211,7 +2378,7 @@ namespace windiskhelper
                     targets_with_sessions.Add(target_name);
             }
 
-            List<TargetInfo> targets_to_return = new List<TargetInfo>();
+            List<IscsiTargetInfo> targets_to_return = new List<IscsiTargetInfo>();
 
             // Get the target objects from the initiator
             ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
@@ -2231,7 +2398,7 @@ namespace windiskhelper
                         if (portal["Address"].ToString() == pPortalAddress.ToString())
                         {
                             // This target is from the portal we are interested in
-                            TargetInfo target_info = new TargetInfo();
+                            IscsiTargetInfo target_info = new IscsiTargetInfo();
                             target_info.InitiatorName = target["InitiatorName"] as String;
                             target_info.TargetFlags = (UInt32)target["TargetFlags"];
                             target_info.TargetPortal = portal["Address"] as String;
@@ -2267,6 +2434,22 @@ namespace windiskhelper
             Logger.Info("Logging out all sessions");
             foreach (ManagementObject session in session_list)
             {
+                // Make sure this is not the boot volume
+                // This is a pretty weak check - just looking that this device is not disk 0
+                // But this should work with all known ways to configure boot from iSCSI
+                var device_list = session["Devices"] as ManagementBaseObject[];
+                bool isboot = false;
+                foreach (var dev in device_list)
+                {
+                    if ((UInt32)dev["DeviceNumber"] == 0)
+                    {
+                        isboot = true;
+                        break;
+                    }
+                }
+                if (isboot)
+                    continue;
+
                 LogoutSessionClassHelper(session);
                 string target_name = session["TargetName"] as String;
                 if (pRemovePersistent && persistent_logins.ContainsKey(target_name))
@@ -2278,7 +2461,7 @@ namespace windiskhelper
                     }
                     catch (ManagementException e)
                     {
-                        throw ManagementExceptionToIscsiException(e);
+                        throw ManagementExceptionToInitiatorException(e);
                     }
                 }
             }
@@ -2295,7 +2478,7 @@ namespace windiskhelper
                 }
                 catch (ManagementException e)
                 {
-                    throw ManagementExceptionToIscsiException(e);
+                    throw ManagementExceptionToInitiatorException(e);
                 }
             }
         }
@@ -2356,7 +2539,7 @@ namespace windiskhelper
                         }
                         catch (ManagementException e)
                         {
-                            throw ManagementExceptionToIscsiException(e);
+                            throw ManagementExceptionToInitiatorException(e);
                         }
                     }
                 }
@@ -2403,7 +2586,7 @@ namespace windiskhelper
             }
 
             // Log in to each target that does not already have a session
-            IscsiException last_exception = null;
+            InitiatorException last_exception = null;
             foreach (ManagementObject target in target_list)
             {
                 string target_name = target["TargetName"] as String;
@@ -2419,7 +2602,7 @@ namespace windiskhelper
                         }
                         catch (ManagementException e)
                         {
-                            throw ManagementExceptionToIscsiException(e);
+                            throw ManagementExceptionToInitiatorException(e);
                         }
                     }
 
@@ -2428,7 +2611,7 @@ namespace windiskhelper
                     {
                         LoginTargetClassHelper(target, pChapUsername, pChapSecret, pPersistent);
                     }
-                    catch (IscsiException e)
+                    catch (InitiatorException e)
                     {
                         Logger.Error("Failed to log in: " + e.Message);
                         last_exception = e;
@@ -2442,7 +2625,7 @@ namespace windiskhelper
 
             if (last_exception != null)
             {
-                throw new IscsiException("Could not log in to all targets");
+                throw new InitiatorException("Could not log in to all targets");
             }
         }
 
@@ -2527,7 +2710,7 @@ namespace windiskhelper
                         }
                         catch (ManagementException e)
                         {
-                            throw ManagementExceptionToIscsiException(e);
+                            throw ManagementExceptionToInitiatorException(e);
                         }
                     }
 
@@ -2646,11 +2829,15 @@ namespace windiskhelper
                     ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
                     if (device_info == null || device_info.Length <= 0)
                     {
-                        throw new IscsiException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
+                        throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
                     }
                     ManagementBaseObject[] connection_info = session["ConnectionInformation"] as ManagementBaseObject[];
 
                     // We are assuming a single device per session, and a single connection per session
+
+                    // Ignore disk 0 because it is probably the system volume
+                    if ((uint)device_info[0]["DeviceNumber"] == 0)
+                        continue;
 
                     DiskInfo disk_info = new DiskInfo();
                     disk_info.TargetName = target_name;
@@ -2739,13 +2926,18 @@ namespace windiskhelper
                 ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
                 if (device_info == null || device_info.Length <= 0)
                 {
-                    throw new IscsiException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
+                    throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
                 }
                 ManagementBaseObject[] connection_info = session["ConnectionInformation"] as ManagementBaseObject[];
 
                 // We are assuming a single device per session, and a single connection per session
 
+                // Ignore disk 0 because it is probably the system volume
+                if ((uint)device_info[0]["DeviceNumber"] == 0)
+                    continue;
+
                 DiskInfo disk_info = new DiskInfo();
+                disk_info.TargetType = TargetType.iSCSI;
                 disk_info.TargetName = target_name;
                 disk_info.DeviceNumber = (uint)device_info[0]["DeviceNumber"];
                 disk_info.LegacyDeviceName = device_info[0]["LegacyName"] as String;
@@ -2814,7 +3006,7 @@ namespace windiskhelper
             return disk_list.Values.ToList();
         }
 
-        public string GetInitiatorName()
+        public string GetIscsiInitiatorName()
         {
             string node_name = "";
             ManagementObjectCollection init_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_MethodClass");
@@ -2826,7 +3018,7 @@ namespace windiskhelper
             return node_name;
         }
 
-        public void SetInitiatorName(string pInitiatorName)
+        public void SetIscsiInitiatorName(string pInitiatorName)
         {
             ManagementObjectCollection init_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_MethodClass");
             foreach (ManagementObject init in init_list)
@@ -2839,15 +3031,60 @@ namespace windiskhelper
                 }
                 catch (ManagementException e)
                 {
-                    throw ManagementExceptionToIscsiException(e);
+                    throw ManagementExceptionToInitiatorException(e);
                 }
                 break;
             }
         }
 
-    
 
-    
+
+
+        public List<string> GetWWPNs()
+        {
+            List<string> wwns = new List<string>();
+            ManagementObjectCollection adapter_list = DoWmiQuery("SELECT * FROM MSFC_FibrePortHBAAttributes");
+            foreach (var adapter in adapter_list)
+            {
+                ManagementBaseObject attributes = adapter["Attributes"] as ManagementBaseObject;
+                wwns.Add(String.Join(":", (attributes["PortWWN"] as byte[]).Select(obj => String.Format("{0:X2}", obj).ToLower()).ToArray()));
+            }
+            return wwns;
+        }
+
+        public List<FcHbaInfo> GetFcHbaInfo()
+        {
+            List<FcHbaInfo> hbas = new List<FcHbaInfo>();
+            ManagementObjectCollection adapter_list = DoWmiQuery("SELECT * FROM MSFC_FCAdapterHBAAttributes");
+            ManagementObjectCollection port_list = DoWmiQuery("SELECT * FROM MSFC_FibrePortHBAAttributes");
+            foreach (var adapter in adapter_list)
+            {
+                FcHbaInfo h = new FcHbaInfo();
+                h.Description = adapter["ModelDescription"] as String;
+                h.DriverVersion = adapter["DriverVersion"] as String;
+                h.FirmwareVersion = adapter["FirmwareVersion"] as String;
+                h.Model = adapter["Model"] as String;
+                foreach (var port in port_list)
+                {
+                    if (port["InstanceName"] as String == adapter["InstanceName"] as String)
+                    {
+                        ManagementBaseObject attributes = port["Attributes"] as ManagementBaseObject;
+                        h.WWPN = String.Join(":", (attributes["PortWWN"] as byte[]).Select(obj => String.Format("{0:X2}", obj).ToLower()).ToArray());
+
+                        //h.PortState = Enum.GetName(typeof(HBA_PORTSTATE), (UInt32)attributes["PortState"]);
+                        h.PortState = ((HBA_PORTSTATE)(UInt32)attributes["PortState"]).GetDescription();
+                        //h.Speed = Enum.GetName(typeof(HBA_PORTSPEED), (UInt32)attributes["PortSpeed"]);
+                        h.Speed = ((HBA_PORTSPEED)(UInt32)attributes["PortSpeed"]).GetDescription();
+
+                    }
+                }
+                hbas.Add(h);
+            }
+            return hbas;
+        }
+
+
     
     }
 }
+

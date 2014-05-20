@@ -78,9 +78,12 @@ namespace windiskhelper
 
         public static void EnableBatchMode()
         {
-            Hierarchy hierarchy = (Hierarchy)LogManager.GetRepository();
-            hierarchy.Root.Level = Level.All;
-            hierarchy.Root.RemoveAppender("ConsoleLogger");
+            // Add a filter to only show ERROR and above on the console
+            Hierarchy hierarchy = LogManager.GetRepository() as Hierarchy;
+            var console = hierarchy.Root.GetAppender("ConsoleLogger") as ColoredConsoleAppender;
+            var filter = new log4net.Filter.LevelRangeFilter();
+            filter.LevelMin = Level.Error;
+            console.AddFilter(filter);
         }
 
         public static void EnableConsoleDebug()
