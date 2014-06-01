@@ -28,11 +28,11 @@ namespace windiskhelper
             //mVdsService = ConnectVdsService();
         }
 
-        public MicrosoftInitiator(string pHostname, string pUsername, string pPassword)
+        public MicrosoftInitiator(string Hostname, string Username, string Password)
         {
-            mClientHostname = pHostname;
-            mClientUsername = pUsername;
-            mClientPassword = pPassword;
+            mClientHostname = Hostname;
+            mClientUsername = Username;
+            mClientPassword = Password;
 
             //Logger.Info("Connecting to " + pHostname);
             //ConnectWmiScope(@"root\wmi");
@@ -198,35 +198,35 @@ namespace windiskhelper
             }
         }
 
-        private ManagementScope ConnectWmiScope(string pNamespace, bool pReconnect = false)
+        private ManagementScope ConnectWmiScope(string Namespace, bool Reconnect = false)
         {
-            if (wmiConnections.ContainsKey(pNamespace.ToLower()) && !pReconnect)
-                return wmiConnections[pNamespace.ToLower()];
+            if (wmiConnections.ContainsKey(Namespace.ToLower()) && !Reconnect)
+                return wmiConnections[Namespace.ToLower()];
 
             ManagementPath path = null;
             ManagementScope scope = null;
 
             if (mClientHostname == "localhost")
             {
-                Logger.Debug("Connecting to WMI scope '" + pNamespace + "' on localhost");
-                path = new ManagementPath(pNamespace);
+                Logger.Debug("Connecting to WMI scope '" + Namespace + "' on localhost");
+                path = new ManagementPath(Namespace);
                 scope = new ManagementScope(path);
             }
             else
             {
                 if (mClientUsername != null)
                 {
-                    Logger.Debug("Connecting to WMI scope '" + pNamespace + "' on " + mClientHostname + " as " + mClientUsername + ":" + mClientPassword);
+                    Logger.Debug("Connecting to WMI scope '" + Namespace + "' on " + mClientHostname + " as " + mClientUsername + ":" + mClientPassword);
                     ConnectionOptions conn_options = new ConnectionOptions();
                     conn_options.Username = mClientUsername;
                     conn_options.Password = mClientPassword;
-                    path = new ManagementPath(@"\\" + mClientHostname + "\\" + pNamespace);
+                    path = new ManagementPath(@"\\" + mClientHostname + "\\" + Namespace);
                     scope = new ManagementScope(path, conn_options);
                 }
                 else
                 {
-                    Logger.Debug("Connecting to WMI scope '" + pNamespace + "' on " + mClientHostname + " as current user");
-                    path = new ManagementPath(@"\\" + mClientHostname + "\\" + pNamespace);
+                    Logger.Debug("Connecting to WMI scope '" + Namespace + "' on " + mClientHostname + " as current user");
+                    path = new ManagementPath(@"\\" + mClientHostname + "\\" + Namespace);
                     scope = new ManagementScope(path);
                 }
             }
@@ -247,17 +247,17 @@ namespace windiskhelper
                 throw ComExceptionToIscsiException(e);
             }
 
-            if (wmiConnections.ContainsKey(pNamespace.ToLower()))
-                wmiConnections[pNamespace.ToLower()] = scope;
+            if (wmiConnections.ContainsKey(Namespace.ToLower()))
+                wmiConnections[Namespace.ToLower()] = scope;
             else
-                wmiConnections.Add(pNamespace.ToLower(), scope);
+                wmiConnections.Add(Namespace.ToLower(), scope);
 
             return scope;
         }
 
-        private Service ConnectVdsService(bool pReconnect = false)
+        private Service ConnectVdsService(bool Reconnect = false)
         {
-            if (mVdsService == null || pReconnect)
+            if (mVdsService == null || Reconnect)
             {
                 if (mClientHostname != "localhost" && mClientUsername != null)
                 {
@@ -274,9 +274,9 @@ namespace windiskhelper
                     vds_service.WaitForServiceReady();
                     Logger.Debug("Scanning for disks...");
                     vds_service.Reenumerate();
-                    Thread.Sleep(1000);
+                    //Thread.Sleep(1000);
                     vds_service.Refresh();
-                    Thread.Sleep(1000);
+                    //Thread.Sleep(1000);
                     Logger.Debug("Cleaning mount points...");
                     vds_service.CleanupObsoleteMountPoints();
                     mVdsService = vds_service;
@@ -292,9 +292,9 @@ namespace windiskhelper
             else
             {
                 mVdsService.Reenumerate();
-                Thread.Sleep(1000);
+                //Thread.Sleep(1000);
                 mVdsService.Refresh();
-                Thread.Sleep(1000);
+                //Thread.Sleep(1000);
             }
             mVdsService.AutoMount = false;
             return mVdsService;
@@ -413,21 +413,42 @@ namespace windiskhelper
                 if (pErrorCode != null)
                     this.ErrorCode = (UInt32)pErrorCode;
             }
-
-            //protected IscsiException(
-            //  System.Runtime.Serialization.SerializationInfo info,
-            //  System.Runtime.Serialization.StreamingContext context)
-            //    : base(info, context) { }
         }
 
+        private class ProcessResult
+        {
+            public string Stdout;
+            public string Stderr;
+            public int ExitCode;
+        }
+
+        public class IscsiPortalInfo
+        {
+            // from MSiSCSIInitiator_SendTargetsPortalClass, MSiSCSIInitiator_TargetLoginOptions
+            public string PortalAddress { get; set; }
+            public UInt16 PortalPort { get; set; }
+            public string AuthType { get; set; }
+            public string Username { get; set; }
+
+            public override string ToString()
+            {
+                return "PortalAddress: " + this.PortalAddress + ", PortalPort: " + this.PortalPort + ", AuthType: " + this.AuthType + ", Username: " + this.Username;
+            }
+        }
+        
         public class IscsiTargetInfo
         {
+            // from MSiSCSIInitiator_TargetClass, MSiSCSIInitiator_TargetLoginOptions
             public string DiscoveryMechanism { get; set; }
             public string InitiatorName { get; set; }
             public string TargetPortal { get; set; }
             public string TargetIqn { get; set; }
             public UInt32 TargetFlags { get; set; }
             public bool IsLoggedIn { get; set; }
+
+            // the login options structure appears to not be initialized for targets - it is only used during login
+            //public string AuthType { get; set; }
+            //public string Username { get; set; }
         }
 
         public class IscsiSessionInfo
@@ -439,6 +460,8 @@ namespace windiskhelper
             public UInt16 InitiatorPort { get; set; }
             public string TargetAddress { get; set; }
             public UInt16 TargetPort { get; set; }
+            public string LegacyDeviceName { get; set; }
+            public UInt32 DeviceNumber { get; set; }
         }
 
         public enum TargetType
@@ -446,15 +469,53 @@ namespace windiskhelper
             iSCSI,
             FibreChannel
         }
+
+        public enum IscsiTargetLoginState
+        {
+            LoggedIn,
+            LoggedOut,
+            Any
+        }
+
         public class DiskInfo
         {
-            public string TargetName { get; set; }
-            public string PortalAddress { get; set; }
-            public uint DeviceNumber { get; set; }
+            public string IscsiTargetName { get; set; }
+            public string IscsiPortalAddress { get; set; }
+            public UInt32 DeviceNumber { get; set; }
             public string LegacyDeviceName { get; set; }
+            public string DevicePath { get; set; }
             public string MountPoint { get; set; }
-            public int SectorSize { get; set; }
-            public TargetType TargetType { get; set; }
+            public UInt32 SectorSize { get; set; }
+            public UInt64 Size { get; set; }
+            public UInt32 Port { get; set; }
+            public UInt32 Path { get; set; }
+            public UInt32 Target { get; set; }
+            public UInt32 Lun { get; set; }
+            public bool Online { get; set; }
+            public bool Readonly { get; set; }
+            public string TargetType { get; set; }
+
+            public DiskInfo()
+            { }
+
+            public DiskInfo(DiskInfo source)
+            {
+                this.DeviceNumber = source.DeviceNumber;
+                this.DevicePath = source.DevicePath;
+                this.IscsiPortalAddress = source.IscsiPortalAddress;
+                this.IscsiTargetName = source.IscsiTargetName;
+                this.LegacyDeviceName = source.LegacyDeviceName;
+                this.Lun = source.Lun;
+                this.MountPoint = source.MountPoint;
+                this.Online = source.Online;
+                this.Path = source.Path;
+                this.Port = source.Port;
+                this.Readonly = source.Readonly;
+                this.SectorSize = source.SectorSize;
+                this.Size = source.Size;
+                this.Target = source.Target;
+                this.TargetType = source.TargetType;
+            }
         }
 
         public class FcHbaInfo
@@ -466,14 +527,86 @@ namespace windiskhelper
             public string FirmwareVersion { get; set; }
             public string Model { get; set; }
             public string Description { get; set; }
+            public List<string> TargetWWPNs { get; set; }
+            public int UniqueLunCount { get; set; }
+            public int TotalLunPathCount { get; set; }
+
+            public FcHbaInfo()
+            {
+                TargetWWPNs = new List<string>();
+            }
         }
 
+        // From mpiodisk.h in the Windows Driver DDK
+        public enum TargetPortGroup_State : uint
+        {
+            [Description("Active/Optimized")]
+            STATE_ACTIVE_OPTIMIZED = 0,
+            [Description("Active/Unoptimized")]
+            STATE_ACTIVE_UNOPTIMIZED = 1,
+            [Description("Standby")]
+            STATE_STANDBY = 2,
+            [Description("Unavailable")]
+            STATE_UNAVAILABLE = 3,
+            [Description("Not used")]
+            STATE_NOT_USED = 16,
+        }
+
+        public class MpioDiskInfo : DiskInfo
+        {
+            // Additional info from VDS AdvancedDisk, DSM_QueryLBPolicy_V2, DSM_Load_Balance_Policy_V2, DSM_QuerySupportedLBPolicies_V2
+            public string InstanceName { get; set; }
+            public string DeviceName { get; set; }
+            public string LoadBalancePolicy { get; set; }
+            public List<string> Supported_LB_Policies { get; set; }
+            public int FailedPathCount { get; set; }
+            public List<MpioPathInfo> DSM_Paths { get; set; }
+
+            public MpioDiskInfo()
+            {
+                Supported_LB_Policies = new List<string>();
+                DSM_Paths = new List<MpioPathInfo>();
+            }
+
+            public MpioDiskInfo(DiskInfo d) : base(d)
+            {
+                Supported_LB_Policies = new List<string>();
+                DSM_Paths = new List<MpioPathInfo>();
+            }
+        }
+
+        public class MpioPathInfo
+        {
+            // Info from MPIO_DSM_Path_V2, PDOSCSI_ADDR
+            public UInt32 ALUASupport { get; set; }
+            public UInt64 DsmPathId { get; set; }
+            public UInt32 FailedPath { get; set; }
+            public UInt32 OptimizedPath { get; set; }
+            public UInt32 PathWeight { get; set; }
+            public UInt32 PreferredPath { get; set; }
+            public UInt32 PrimaryPath { get; set; }
+            public UInt64 Reserved { get; set; }
+            public bool SymmetricLUA { get; set; }
+            public UInt16 TargetPortGroup_Identifier { get; set; }
+            public bool TargetPortGroup_Preferred { get; set; }
+            public string TargetPortGroup_State { get; set; }
+            public int Lun { get; set; }
+            public int PortNumber { get; set; }
+            public int ScsiPathId { get; set; }
+            public int TargetId { get; set; }
+        }
+
+        // From iscsidef.h in the Windows SDK
         public enum ISCSI_AUTH_TYPES : uint
         {
+            [Description("None")]
             ISCSI_NO_AUTH_TYPE = 0, // IQN authentication
+            [Description("CHAP")]
             ISCSI_CHAP_AUTH_TYPE = 1, // One-way CHAP authentication
+            [Description("Mutual CHAP")]
             ISCSI_MUTUAL_CHAP_AUTH_TYPE = 2, // Two-way CHAP authentication
         }
+        
         // From iscsierr.h in the Windows SDK
         public enum ISCSI_ERROR_CODES : uint
         {
@@ -582,6 +715,7 @@ namespace windiskhelper
             ISDSC_FAILURE_TO_PERSIST_LB_POLICY = 0xEFFF0067,
             ISDSC_INVALID_HOST = 0xEFFF0068,
         }
+
         // From vdserr.h in the Windows SDK
         public enum VDS_COM_ERROR_CODES : uint
         {
@@ -975,6 +1109,25 @@ namespace windiskhelper
             HBA_STATUS_ERROR_BAD_EVENT_TYPE = 36,
         }
 
+        // from mpiodisk.h in the Windows Driver DDK
+        public enum DSM_LB_POLICY : uint
+        {
+            [Description("Failover Only")]
+            DSM_LB_FAILOVER = 1,
+            [Description("Round Robin")]
+            DSM_LB_ROUND_ROBIN = 2,
+            [Description("Round Robin with Subset")]
+            DSM_LB_ROUND_ROBIN_WITH_SUBSET = 3,
+            [Description("Least Queue Depth")]
+            DSM_LB_DYN_LEAST_QUEUE_DEPTH = 4,
+            [Description("Weighted Paths")]
+            DSM_LB_WEIGHTED_PATHS = 5,
+            [Description("Least Blocks")]
+            DSM_LB_LEAST_BLOCKS = 6,
+            [Description("Vendor Specific")]
+            DSM_LB_VENDOR_SPECIFIC = 7,
+        }
+
         private static InitiatorException ManagementExceptionToInitiatorException(ManagementException e)
         {
             
@@ -1096,10 +1249,51 @@ namespace windiskhelper
         #endregion
 
 
-        private ManagementObject InstantiateWmiClass(string pNamespace, string pClassName)
+        /// <summary>
+        /// Run a system command and return the results
+        /// </summary>
+        /// <param name="Commandline"></param>
+        /// <returns></returns>
+        private ProcessResult RunCommand(string Commandline)
         {
-            ManagementScope scope = ConnectWmiScope(pNamespace);
-            ManagementPath path = new ManagementPath(pClassName);
+            Logger.Debug("Executing system command '" + Commandline + "'");
+            List<string> pieces = new List<string>(
+                System.Text.RegularExpressions.Regex.Split(Commandline, @"\s+")
+            );
+
+            string filename = pieces[0];
+            string args = String.Join(" ", pieces.ToArray(), 1, pieces.Count - 1);
+
+            System.Diagnostics.Process p = new System.Diagnostics.Process();
+            p.StartInfo.FileName = filename;
+            p.StartInfo.Arguments = args;
+            p.StartInfo.CreateNoWindow = true;
+            p.StartInfo.ErrorDialog = false;
+            p.StartInfo.UseShellExecute = false;
+            p.StartInfo.RedirectStandardError = true;
+            p.StartInfo.RedirectStandardOutput = true;
+            p.Start();
+            string stdout = p.StandardOutput.ReadToEnd();
+            string stderr = p.StandardError.ReadToEnd();
+            p.WaitForExit();
+
+            ProcessResult res = new ProcessResult();
+            res.ExitCode = p.ExitCode;
+            res.Stdout = stdout;
+            res.Stderr = stderr;
+            return res;
+        }
+
+        /// <summary>
+        /// Create a new instance of a WMI class
+        /// </summary>
+        /// <param name="Namespace">The namespace of the class</param>
+        /// <param name="ClassName">The name of the class</param>
+        /// <returns></returns>
+        private ManagementObject InstantiateWmiClass(string Namespace, string ClassName)
+        {
+            ManagementScope scope = ConnectWmiScope(Namespace);
+            ManagementPath path = new ManagementPath(ClassName);
             ObjectGetOptions options = new ObjectGetOptions();
             ManagementClass object_class = new ManagementClass(scope, path, options);
 
@@ -1109,10 +1303,18 @@ namespace windiskhelper
             return object_instance;
         }
 
-        private ManagementObjectCollection DoWmiQuery(string pWqlQueryString, string pNamespace = @"root\wmi")
+        /// <summary>
+        /// Execute a WMI query and return the result
+        /// </summary>
+        /// <param name="WqlQueryString">The WQL query to execute</param>
+        /// <param name="Namespace">The namespace to execute against</param>
+        /// <returns></returns>
+        private ManagementObjectCollection DoWmiQuery(string WqlQueryString, string Namespace = @"root\wmi")
         {
-            ManagementScope scope = ConnectWmiScope(pNamespace);
-            ObjectQuery query = new ObjectQuery(pWqlQueryString);
+            Logger.Debug("Executing query " + WqlQueryString);
+
+            ManagementScope scope = ConnectWmiScope(Namespace);
+            ObjectQuery query = new ObjectQuery(WqlQueryString);
             ManagementObjectSearcher searcher = new ManagementObjectSearcher(scope, query);
 
             ManagementObjectCollection result_list = searcher.Get();
@@ -1129,35 +1331,39 @@ namespace windiskhelper
             return result_list;
         }
 
-        private Dictionary<string, string> GetDeviceToVolumeMapAll()
+        /// <summary>
+        /// Retrieve a mapping of device name to iSCSI volume name
+        /// </summary>
+        /// <param name="PortalAddressList">Only include devices from these portals</param>
+        /// <param name="TargetList">Only include devices from these targets</param>
+        /// <returns></returns>
+        private Dictionary<string, string> GetDeviceToIscsiVolumeMap(List<string> PortalAddressList = null, List<string> TargetList = null)
         {
-            Logger.Debug("Building device => volume map");
-            Dictionary<string, string> device_to_volume = new Dictionary<string, string>();
+            // Get the list of targets that match the specified filters
+            HashSet<string> targets_to_query = GetFilteredTargetSet(PortalAddressList, TargetList);
 
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
 
-            // Find which targets have sessions (are logged in) and get their device info
+            // Find the sessions that belong to targets and get the device that belongs to each one
+            Dictionary<string, string> device_to_volume = new Dictionary<string, string>();
             foreach (ManagementObject session in session_list)
             {
                 string target_name = session["TargetName"] as String;
                 string session_name = session["SessionId"] as String;
-                ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
-                if (device_info == null || device_info.Length <= 0)
+                if (!String.IsNullOrEmpty(target_name) && targets_to_query.Contains(target_name))
                 {
-                    throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
-                }
+                    ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
+                    if (device_info == null || device_info.Length <= 0)
+                    {
+                        throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
+                    }
 
-                // Weak check for boot/system volume
-                if ((UInt32)device_info[0]["DeviceNumber"] == 0)
-                {
-                    Logger.Debug("Leaving " + target_name + " out of device map because it is probably a system volume");
-                    continue;
-                }
-                string device_name = device_info[0]["LegacyName"] as String;
-                string volume_name = IqnToVolumeName(target_name);
+                    string device_name = device_info[0]["LegacyName"] as String;
+                    string volume_name = IqnToVolumeName(target_name);
 
-                device_to_volume.Add(device_name, volume_name);
+                    device_to_volume.Add(device_name, volume_name);
+                }
             }
 
             return device_to_volume;
@@ -1201,86 +1407,122 @@ namespace windiskhelper
             }
         }
 
-        private Dictionary<string, string> GetDeviceToVolumeMapOnPortal(string pPortalAddress)
+        /// <summary>
+        /// Get a list of iSCSI disk devices that match the specified filters
+        /// </summary>
+        /// <param name="PortalAddressList">Only include devices from these portals</param>
+        /// <param name="TargetList">Only include devices from these targets</param>
+        /// <returns></returns>
+        private HashSet<string> GetFilteredDeviceList(List<string> PortalAddressList = null, List<string> TargetList = null)
         {
-            Logger.Info("Searching for disks from portal '" + pPortalAddress + "'");
-
-            // Get the list of target objects from the initiator
-            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
-
-            // Make a list of targets on the specified portal
-            HashSet<string> targets_to_mount = new HashSet<string>();
-            foreach (ManagementObject target in target_list)
-            {
-                // This next line works with the current version of MS iSCSI but it's a hack based on the string format of the DiscoveryMechanism field
-                //if (target["DiscoveryMechanism"].ToString().Contains(pPortalAddress.ToString())) { }
-
-                // Get a list of portal groups, on each portal group get a list of portals, on each portal compare the portal address to the one we are looking for
-                var portal_groups = target["PortalGroups"] as ManagementBaseObject[];
-                foreach (var portal_group in portal_groups)
-                {
-                    var portals = portal_group["Portals"] as ManagementBaseObject[];
-                    foreach (var portal in portals)
-                    {
-                        if (portal["Address"].ToString() == pPortalAddress.ToString())
-                        {
-                            // This target is from the portal we are interested in
-                            targets_to_mount.Add(target["TargetName"].ToString());
-                        }
-                    }
-                }
-            }
+            // Get the list of targets that match the specified filters
+            HashSet<string> targets_to_query = GetFilteredTargetSet(PortalAddressList, TargetList);
 
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
 
-            // Find the sessions that belong to targets on the specified portal and get the device that belongs to each one
-            Dictionary<string, string> device_to_volume = new Dictionary<string, string>();
+            // Find the sessions that belong to targets and get the device that belongs to each one
+            HashSet<string> filtered_device_list = new HashSet<string>();
             foreach (ManagementObject session in session_list)
             {
                 string target_name = session["TargetName"] as String;
                 string session_name = session["SessionId"] as String;
-                if (!String.IsNullOrEmpty(target_name) && targets_to_mount.Contains(target_name))
+                if (!String.IsNullOrEmpty(target_name) && targets_to_query.Contains(target_name))
                 {
-                    // This session is on the portal we are interested in
                     ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
                     if (device_info == null || device_info.Length <= 0)
                     {
                         throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
                     }
-
                     string device_name = device_info[0]["LegacyName"] as String;
-                    string volume_name = IqnToVolumeName(target_name);
-
-                    device_to_volume.Add(device_name, volume_name);
+                    filtered_device_list.Add(device_name);
                 }
             }
-
-            return device_to_volume;
+            return filtered_device_list;
         }
 
-        private void LogoutSessionClassHelper(ManagementObject pSession)
+        /// <summary>
+        /// Return a set of targets that match the specified filters.
+        /// </summary>
+        /// <param name="PortalAddress">Only return targets that are on this portal</param>
+        /// <param name="TargetList">Only return targets if they are in this list</param>
+        /// <returns></returns>
+        private HashSet<string> GetFilteredTargetSet(List<string> PortalAddressList = null, List<string> TargetList = null)
         {
-            string target_name = pSession["TargetName"] as String;
-            string session_id = pSession["SessionId"] as String;
-            Logger.Debug("Logging out of session '" + session_id + "' for target '" + target_name + "'");
+            bool filter_portal = PortalAddressList != null && PortalAddressList.Count >= 0;
+            bool filter_target = TargetList != null && TargetList.Count >= 0;
 
+            // Make a list of targets
+            HashSet<string> filtered_target_names = new HashSet<string>();
+            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
+            foreach (ManagementObject target in target_list)
+            {
+                // Ignore this target is it is not on a requested portal
+                string target_portal = GetTargetPortal(target);
+                if (filter_portal && !PortalAddressList.Contains(target_portal))
+                    continue;
+
+                string target_iqn = target["TargetName"] as String;
+
+                // Ignore this target if it is not in the specified list
+                if (filter_target && !TargetList.Contains(target_iqn))
+                    continue;
+
+                filtered_target_names.Add(target_iqn);
+            }
+
+            return filtered_target_names;
+        }
+
+        /// <summary>
+        /// Get the first portal this target is associated with.
+        /// </summary>
+        /// <param name="TargetObject">The target to query</param>
+        /// <returns></returns>
+        string GetTargetPortal(ManagementBaseObject TargetObject)
+        {
+            ManagementBaseObject[] portal_groups = TargetObject["PortalGroups"] as ManagementBaseObject[];
+            foreach (ManagementBaseObject portal_group in portal_groups)
+            {
+                ManagementBaseObject[] portals = portal_group["Portals"] as ManagementBaseObject[];
+                foreach (ManagementBaseObject portal in portals)
+                {
+                    return portal["Address"] as String;
+                }
+            }
+            throw new InitiatorException("Could not find portal for target " + TargetObject["TargetName"] as String);
+        }
+
+        /// <summary>
+        /// Log out of a single iSCSI session
+        /// </summary>
+        /// <param name="SessionObject">The session WMI object</param>
+        private void LogoutSessionClassHelper(ManagementObject SessionObject)
+        {
             ManagementBaseObject return_params = null;
             try
             {
-                return_params = pSession.InvokeMethod("Logout", null, null);
+                return_params = SessionObject.InvokeMethod("Logout", null, null);
             }
             catch (ManagementException e)
             {
                 throw ManagementExceptionToInitiatorException(e);
             }
-            UInt32 return_code = (UInt32)return_params["ReturnValue"];
-            if (return_code != 0)
+            CheckIscsiReturnCode((UInt32)return_params["ReturnValue"]);
+        }
+
+        /// <summary>
+        /// Check if the reutrn code indicates success and raise an exception if not
+        /// </summary>
+        /// <param name="ReturnCode"></param>
+        private void CheckIscsiReturnCode(UInt32 ReturnCode)
+        {
+            if (ReturnCode != 0)
             {
                 string error_desc = "";
                 try
                 {
-                    error_desc = Enum.GetName(typeof(ISCSI_ERROR_CODES), return_code);
+                    error_desc = Enum.GetName(typeof(ISCSI_ERROR_CODES), ReturnCode);
                 }
                 catch (ArgumentException)
                 {
@@ -1288,25 +1530,37 @@ namespace windiskhelper
                 }
                 if (String.IsNullOrEmpty(error_desc))
                     error_desc = "Unknown iSCSI error";
-                throw new InitiatorException(error_desc, return_code);
+                throw new InitiatorException(error_desc, ReturnCode);
             }
         }
 
-        private void LoginTargetClassHelper(ManagementObject pTarget, string pChapUsername, string pChapSecret, bool pPersistent = false)
+        /// <summary>
+        /// Login to a single iSCSI target
+        /// </summary>
+        /// <param name="TargetObject">The target WMI object</param>
+        /// <param name="ChapUsername">Optional CHAP username</param>
+        /// <param name="ChapInitSecret">Optional CHAP initiator password</param>
+        /// <param name="MakePersistent">Create a persistent login</param>
+        private void LoginTargetClassHelper(ManagementObject TargetObject, string ChapUsername = null, string ChapInitSecret = null, string ChapTargSecret = null, bool MakePersistent = false)
         {
-            string target_name = pTarget["TargetName"].ToString();
-            Logger.Info("Logging in to target " + target_name);
+            // Set or unset the target secret
+            SetIscsiChapTargetSecret(ChapTargSecret);
+
+            string target_name = TargetObject["TargetName"].ToString();
 
             // Set up parameters for login method call
-            ManagementBaseObject method_params = pTarget.GetMethodParameters("Login");
+            ManagementBaseObject method_params = TargetObject.GetMethodParameters("Login");
 
-            if (!String.IsNullOrEmpty(pChapUsername) && !String.IsNullOrEmpty(pChapSecret))
+            if (!String.IsNullOrEmpty(ChapUsername) && !String.IsNullOrEmpty(ChapInitSecret))
             {
                 // Set up login options for target to use
                 ManagementObject login_options = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_TargetLoginOptions");
-                login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
-                login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(pChapUsername);
-                login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(pChapSecret);
+                login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(ChapUsername);
+                login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(ChapInitSecret);
+                if (String.IsNullOrEmpty(ChapTargSecret))
+                    login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
+                else
+                    login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_MUTUAL_CHAP_AUTH_TYPE;
                 method_params["LoginOptions"] = login_options;
             }
 
@@ -1314,29 +1568,14 @@ namespace windiskhelper
             ManagementBaseObject return_params = null;
             try
             {
-                return_params = pTarget.InvokeMethod("Login", method_params, null);
+                return_params = TargetObject.InvokeMethod("Login", method_params, null);
             }
             catch (ManagementException e)
             {
                 throw ManagementExceptionToInitiatorException(e);
             }
-            UInt32 return_code = (UInt32)return_params["ReturnValue"];
-            if (return_code != 0)
-            {
-                string error_desc = "";
-                try
-                {
-                    error_desc = Enum.GetName(typeof(ISCSI_ERROR_CODES), return_code);
-                }
-                catch (ArgumentException)
-                {
-                    error_desc = "Unknown iSCSI error";
-                }
-                if (String.IsNullOrEmpty(error_desc))
-                    error_desc = "Unknown iSCSI error";
-                throw new InitiatorException(error_desc, return_code);
-            }
-            if (pPersistent)
+            CheckIscsiReturnCode((UInt32)return_params["ReturnValue"]);
+            if (MakePersistent)
             {
                 // To create a persistent connection, we need to call the Login method a second time with the IsPersistent flag set to true.
                 // This doesn't actually log in again, but instead creates an entry in the persistent targets list to be logged in on the next boot.
@@ -1345,31 +1584,20 @@ namespace windiskhelper
                 return_params = null;
                 try
                 {
-                    return_params = pTarget.InvokeMethod("Login", method_params, null);
+                    return_params = TargetObject.InvokeMethod("Login", method_params, null);
                 }
                 catch (ManagementException e)
                 {
                     throw ManagementExceptionToInitiatorException(e);
                 }
-                return_code = (UInt32)return_params["ReturnValue"];
-                if (return_code != 0)
-                {
-                    string error_desc = "";
-                    try
-                    {
-                        error_desc = Enum.GetName(typeof(ISCSI_ERROR_CODES), return_code);
-                    }
-                    catch (ArgumentException)
-                    {
-                        error_desc = "Unknown iSCSI error";
-                    }
-                    if (String.IsNullOrEmpty(error_desc))
-                        error_desc = "Unknown iSCSI error";
-                    throw new InitiatorException(error_desc, return_code);
-                }
+                CheckIscsiReturnCode((UInt32)return_params["ReturnValue"]);
             }
         }
 
+        /// <summary>
+        /// Find the first available drive letter
+        /// </summary>
+        /// <returns></returns>
         private string GetFirstUnusedDriveLetter()
         {
             Service vds_service = ConnectVdsService();
@@ -1382,116 +1610,176 @@ namespace windiskhelper
             throw new InitiatorException("No unused drive letters available");
         }
 
-        private void RemoveMountsHelper(Dictionary<string, string> pDeviceToVolumeMap)
+        /// <summary>
+        /// Remove volume mount points from disk devices
+        /// </summary>
+        /// <param name="DeviceList">Only operate on these devices</param>
+        /// <param name="PortalAddress">Only operate on devices from iSCSI targets on this portal</param>
+        /// <param name="TargetList">Only operate on devices from these iSCSI targets</param>
+        public void RemoveMountpoints(List<string> DeviceList = null, List<string> PortalAddressList = null, List<string> TargetList = null)
         {
-            if (pDeviceToVolumeMap.Count <= 0)
-                return;
+            // Filters
+            bool filter_devices = DeviceList != null && DeviceList.Count > 0;
+            bool filter_iscsi = (PortalAddressList != null && PortalAddressList.Count > 0) || (TargetList != null && TargetList.Count > 0);
+            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
+            if (filter_iscsi)
+            {
+                filtered_iscsi_device_list = GetFilteredDeviceList(PortalAddressList, TargetList);
+                if (filtered_iscsi_device_list.Count <= 0)
+                    return;
+            }
 
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
+
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                string dev_name = null;
-                string volume_name = null;
+                bool match = false;
+                string dev_name = "";
+
+                // Make sure this pack contains disks that meet the filter criteria
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    dev_name = disk.Name.Replace('?', '.');
-                    if (!pDeviceToVolumeMap.ContainsKey(dev_name))
-                        continue;
+                    dev_name = disk.Name.Replace("?", ".");
+                    if (filter_devices && !DeviceList.Contains(dev_name))
+                        break;
+                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
+                        break;
 
-                    volume_name = pDeviceToVolumeMap[dev_name];
-                    break;
+                    match = true;
                 }
-
-                // Continue to the next pack if this one doesn't have disks in it
-                if (volume_name == null) continue;
+                if (!match)
+                    continue;
 
                 // Unmount the volumes
                 foreach (Volume vol in disk_pack.Volumes)
                 {
-                    if ((vol.Flags & VolumeFlags.SystemVolume) == VolumeFlags.SystemVolume || (vol.Flags & VolumeFlags.BootVolume) == VolumeFlags.BootVolume)
-                    {
-                        Logger.Debug("Not removing mount points from " + volume_name + " because it is a system volume");
+                    if (IsSystemVolume(vol))
                         break;
-                    }
+
                     foreach (string mount_point in vol.AccessPaths)
                     {
-                        Logger.Debug("Removing access path " + mount_point + " from " + volume_name);
+                        Logger.Info("Removing access path " + mount_point + " from " + dev_name);
                         vol.DeleteAccessPath(mount_point, true);
                     }
                     vol.Refresh();
-                    Thread.Sleep(1000);
                 }
             }
             vds_service.CleanupObsoleteMountPoints();
         }
 
-        private void UnmountHelper(Dictionary<string, string> pDeviceToVolumeMap, bool pForceUnmount)
+        /// <summary>
+        /// Check if a VDS disk object represents a system disk
+        /// </summary>
+        /// <param name="VdsDisk"></param>
+        /// <returns></returns>
+        private bool IsSystemDisk(AdvancedDisk VdsDisk)
         {
-            if (pDeviceToVolumeMap.Count <= 0)
-                return;
+            return ((VdsDisk.Flags & DiskFlags.BootDisk) == DiskFlags.BootDisk ||
+                    (VdsDisk.Flags & DiskFlags.CrashDumpDisk) == DiskFlags.CrashDumpDisk ||
+                    (VdsDisk.Flags & DiskFlags.HibernationFileDisk) == DiskFlags.HibernationFileDisk ||
+                    (VdsDisk.Flags & DiskFlags.PageFileDisk) == DiskFlags.PageFileDisk);
+        }
 
-            Logger.Info("Unmounting disks");
+        /// <summary>
+        /// Check if a VDS volume object represents a system disk
+        /// </summary>
+        /// <param name="VdsVolume"></param>
+        /// <returns></returns>
+        private bool IsSystemVolume(Volume VdsVolume)
+        {
+            return ((VdsVolume.Flags & VolumeFlags.BootVolume) == VolumeFlags.BootVolume ||
+                    (VdsVolume.Flags & VolumeFlags.CrashDump) == VolumeFlags.CrashDump ||
+                    (VdsVolume.Flags & VolumeFlags.Hibernation) == VolumeFlags.Hibernation ||
+                    (VdsVolume.Flags & VolumeFlags.PageFile) == VolumeFlags.PageFile ||
+                    (VdsVolume.Flags & VolumeFlags.SystemVolume) == VolumeFlags.SystemVolume);
+        }
+
+        /// <summary>
+        /// Unmount volumes and take disk devices offline
+        /// </summary>
+        /// <param name="DeviceList">Only operate on these devices</param>
+        /// <param name="PortalAddress">Only operate on devices from iSCSI targets on this portal</param>
+        /// <param name="TargetList">Only operate on devices from these iSCSI targets</param>
+        /// <param name="ForceUnmount">Forceably unmount even if the device is in use</param>
+        public void UnmountAndOfflineDisks(List<string> DeviceList = null, List<string> PortalAddressList = null, List<string> TargetList = null, bool ForceUnmount = false)
+        {
+            // Filters
+            bool filter_devices = DeviceList != null && DeviceList.Count > 0;
+            bool filter_iscsi = (PortalAddressList != null && PortalAddressList.Count > 0) || (TargetList != null && TargetList.Count > 0);
+            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
+            if (filter_iscsi)
+            {
+                filtered_iscsi_device_list = GetFilteredDeviceList(PortalAddressList, TargetList);
+                if (filtered_iscsi_device_list.Count <= 0)
+                    return;
+            }
+
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
+
+            // Go through disk packs and find disks
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                bool system_volume = false;
-                string dev_name = null;
-                string volume_name = null;
+                string dev_name = "";
+                bool skip = false;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    dev_name = disk.Name.Replace('?', '.');
-                    if (!pDeviceToVolumeMap.ContainsKey(dev_name))
-                        continue;
-
-                    volume_name = pDeviceToVolumeMap[dev_name];
-                    break;
-                }
-                // Continue to the next pack if this one doesn't have disks in it
-                if (volume_name == null) continue;
-
-                // Unmount the volumes
-                foreach (Volume vol in disk_pack.Volumes)
-                {
-                    if ((vol.Flags & VolumeFlags.SystemVolume) == VolumeFlags.SystemVolume || (vol.Flags & VolumeFlags.BootVolume) == VolumeFlags.BootVolume)
+                    dev_name = disk.Name.Replace("?", ".");
+                    if (filter_devices && !DeviceList.Contains(dev_name))
                     {
-                        Logger.Debug("Skipping " + volume_name + " because it is a system volume");
-                        system_volume = true;
+                        skip = true;
                         break;
                     }
-                    foreach (string mount_point in vol.AccessPaths)
+                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
                     {
-                        Logger.Debug("Removing access path " + mount_point + " from " + volume_name);
-                        vol.DeleteAccessPath(mount_point, true);
+                        skip = true;
+                        break;
                     }
-                    vol.Refresh();
+                    if (IsSystemDisk(disk))
+                    {
+                        Logger.Debug("Skipping device " + dev_name + " because it is a system disk");
+                        skip = true;
+                    }
+                    break;
+                }
+                if (skip)
+                    continue;
 
+                // Unmount the volume
+                foreach (Volume vol in disk_pack.Volumes)
+                {
+                    if (IsSystemVolume(vol))
+                    {
+                        Logger.Debug("Skipping volume " + vol.Label + " because it is a system volume");
+                        skip = true;
+                        break;
+                    }
+                    
                     if (vol.IsMounted)
                     {
-                        Logger.Debug("Unmounting " + volume_name);
+                        Logger.Debug("Unmounting volume " + vol.Label + " (disk " + dev_name + ")");
                         try
                         {
-                            vol.Dismount(pForceUnmount, false);
+                            vol.Dismount(ForceUnmount, false);
                         }
                         catch (VdsException e)
                         {
                             throw VdsExceptionToInitiatorException(e);
                         }
                     }
-                    Thread.Sleep(1000);
                 }
-                // Continue on to the next pack if this one contains a system volume
-                if (system_volume)
+                if (skip)
                     continue;
 
+                // Offline the disk
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
                     if (disk.Status == DiskStatus.Online)
                     {
                         try
                         {
-                            Logger.Debug("Offlining " + volume_name);
+                            Logger.Debug("Offlining " + dev_name);
                             disk.Offline();
                         }
                         catch (VdsException e)
@@ -1501,157 +1789,170 @@ namespace windiskhelper
                     }
                 }
             }
-            vds_service.CleanupObsoleteMountPoints();
         }
-        
-        private void OnlineAndPackHelper(Dictionary<string, string> pDeviceToVolumeMap)
+
+        /// <summary>
+        /// Bring disk devices online and RW
+        /// </summary>
+        /// <param name="DeviceList">Only operate on these devices</param>
+        /// <param name="PortalAddressList">Only operate on devices from iSCSI targets on these portals</param>
+        /// <param name="TargetList">Only operate on devices from these iSCSI targets</param>
+        public void OnlineDisks(List<string> DeviceList = null, List<string> PortalAddressList = null, List<string> TargetList = null)
         {
-            if (pDeviceToVolumeMap.Count <= 0)
-                return;
+            // Filters
+            bool filter_devices = DeviceList != null && DeviceList.Count > 0;
+            bool filter_iscsi = (PortalAddressList != null && PortalAddressList.Count > 0) || (TargetList != null && TargetList.Count > 0);
+            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
+            if (filter_iscsi)
+            {
+                filtered_iscsi_device_list = GetFilteredDeviceList(PortalAddressList, TargetList);
+                if (filtered_iscsi_device_list.Count <= 0)
+                    return;
+            }
 
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
 
-            HashSet<string> warned512e = new HashSet<string>();
-
-            // Find brand new disks
+            // Find brand new disks and add them to VDS
+            bool refresh_needed = false;
             foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
             {
-                string dev_name = disk.Name.Replace('?', '.');
+                // Skip system disks
+                if (IsSystemDisk(disk))
+                    continue;
 
-                // Only look at the specified disks
-                if (pDeviceToVolumeMap.ContainsKey(dev_name))
+                string dev_name = disk.Name.Replace("?", ".");
+                if (filter_devices && !DeviceList.Contains(dev_name))
+                    continue;
+                if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
+                    continue;
+
+                if (disk.Status != DiskStatus.Online)
                 {
-                    string volume_name = null;
-
-                    // See if this is a device we want to use
-                    if (pDeviceToVolumeMap.ContainsKey(dev_name))
-                        volume_name = pDeviceToVolumeMap[dev_name];
-                    else
-                        continue;
-
-                    if (disk.BytesPerSector != 512 && !warned512e.Contains(volume_name))
-                    {
-                        if (Environment.OSVersion.Version.Major < 6 ||
-                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
-                        {
-                            Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
-                            warned512e.Add(volume_name);
-                        }
-                    }
-
-                    // Make sure disk is online
-                    Logger.Debug("Setting " + volume_name + " Online/RW");
-                    if (disk.Status != DiskStatus.Online)
+                    Logger.Debug("Setting " + dev_name + " online");
+                    try
                     {
                         disk.Online();
-                        disk.Refresh();
                     }
-                    if ((disk.Flags & DiskFlags.ReadOnly) == DiskFlags.ReadOnly)
+                    catch
+                    {
+                        Logger.Warn("Could not online " + dev_name);
+                    }
+                }
+                if ((disk.Flags & DiskFlags.ReadOnly) == DiskFlags.ReadOnly)
+                {
+                    Logger.Debug("Setting " + dev_name + " to RW");
+                    try
                     {
                         disk.ClearFlags(DiskFlags.ReadOnly);
-                        disk.Refresh();
                     }
-                    
-                    // Create a new 'pack' for the disk
-                    Pack new_pack = vds_provider.CreatePack();
-                    new_pack.AddDisk(disk.Id, PartitionStyle.Mbr, false);
+                    catch
+                    {
+                        Logger.Warn("Could not clear RO flag on " + dev_name);
+                    }
                 }
-            }
 
-            // Find existing disks
+                // Create a new 'pack' for the disk
+                Pack new_pack = vds_provider.CreatePack();
+                new_pack.AddDisk(disk.Id, PartitionStyle.Mbr, false);
+                refresh_needed = true;
+            }
+            if (refresh_needed)
+                vds_provider.Refresh();
+
+            // Go through disk packs and find disks
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                string dev_name = null;
-                string volume_name = null;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    dev_name = disk.Name.Replace('?', '.');
-                    if (!pDeviceToVolumeMap.ContainsKey(dev_name))
+                    string dev_name = disk.Name.Replace("?", ".");
+                    if (filter_devices && !DeviceList.Contains(dev_name))
+                        continue;
+                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
                         continue;
 
-                    volume_name = pDeviceToVolumeMap[dev_name];
-
-                    if (disk.BytesPerSector != 512 && !warned512e.Contains(volume_name))
-                    {
-                        if (Environment.OSVersion.Version.Major < 6 ||
-                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
-                        {
-                            Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
-                            warned512e.Add(volume_name);
-                        }
-                    }
-
-                    // Make sure disk is online
-                    Logger.Debug("Setting " + volume_name + " Online/RW");
                     if (disk.Status != DiskStatus.Online)
                     {
+                        Logger.Debug("Setting " + dev_name + " online");
                         try
                         {
                             disk.Online();
-                            disk.Refresh();
                         }
                         catch
                         {
-                            Logger.Warn("Could not online " + volume_name);
+                            Logger.Warn("Could not online " + dev_name);
                         }
                     }
                     if ((disk.Flags & DiskFlags.ReadOnly) == DiskFlags.ReadOnly)
                     {
+                        Logger.Debug("Setting " + dev_name + " to RW");
                         try
                         {
                             disk.ClearFlags(DiskFlags.ReadOnly);
-                            disk.Refresh();
                         }
                         catch
                         {
-                            Logger.Warn("Could not clear RO on " + volume_name);
+                            Logger.Warn("Could not clear RO flag on " + dev_name);
                         }
                     }
-                    break;
                 }
             }
         }
 
-        private void PartitionAndFormatHelper(Dictionary<string, string> pDeviceToVolumeMap, bool pRelabel = false)
+        /// <summary>
+        /// Create partitions and format disk devices
+        /// </summary>
+        /// <param name="DeviceList">Only operate on these devices</param>
+        /// <param name="PortalAddressList">Only operate on devices from iSCSI targets on these portals</param>
+        /// <param name="TargetList">Only operate on devices from these iSCSI targets</param>
+        /// <param name="RelabelVolumes">Update the volume label to match the device/volume name (snapshots/clones)</param>
+        public void PartitionAndFormatDisks(List<string> DeviceList = null, List<string> PortalAddressList = null, List<string> TargetList = null, bool RelabelVolumes = false)
         {
-            if (pDeviceToVolumeMap.Count <= 0)
-                return;
+            // Filters
+            bool filter_devices = DeviceList != null && DeviceList.Count > 0;
+            bool filter_iscsi = (PortalAddressList != null && PortalAddressList.Count > 0) || (TargetList != null && TargetList.Count > 0);
+            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
+            if (filter_iscsi)
+            {
+                filtered_iscsi_device_list = GetFilteredDeviceList(PortalAddressList, TargetList);
+                if (filtered_iscsi_device_list.Count <= 0)
+                    return;
+            }
+            Dictionary<string, string> iscsi_map = GetDeviceToIscsiVolumeMap();
 
-            // Assume disk == partition == volume == mount point
-            // 1:1:1:1
+            // Make sure disks are onlined/RW first
+            OnlineDisks(DeviceList, PortalAddressList, TargetList);
+
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
 
             // Find all disks in all disk packs and make sure they are partitioned, formatted and mounted
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                HashSet<string> warned512e = new HashSet<string>();
-
-                string dev_name = null;
-                string volume_name = null;
+                bool found_disks = false;
+                string volume_label = "";
+                string volume_name = "";
+                string dev_name = "";
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    dev_name = disk.Name.Replace('?', '.');
-                    if (!pDeviceToVolumeMap.ContainsKey(dev_name))
-                        continue;
+                    dev_name = disk.Name.Replace("?", ".");
+                    if (filter_devices && !DeviceList.Contains(dev_name))
+                        break;
+                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
+                        break;
 
-                    volume_name = pDeviceToVolumeMap[dev_name];
-
-                    if (disk.BytesPerSector != 512)
-                    {
-                        if (Environment.OSVersion.Version.Major < 6 ||
-                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
-                        {
-                            Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
-                        }
-                    }
+                    found_disks = true;
 
                     // Partition and format the disk if it isn't already
                     if (disk.Partitions.Count <= 0)
                     {
+                        iscsi_map.TryGetValue(dev_name, out volume_name);
+
                         // Partition the disk
-                        Logger.Info("Creating partition on '" + volume_name + "'");
+                        if (String.IsNullOrEmpty(volume_name))
+                            Logger.Info("Creating partition on " + dev_name);
+                        else
+                            Logger.Info("Creating partition on " + volume_name);
                         InputDisk indisk = new InputDisk();
                         indisk.DiskId = disk.Id;
                         indisk.Size = disk.Size - 3 * 1024 * 1024; // Must leave some free space on the drive for the dynamic disk database, even on a simple disk.  CreateVolume will fail without this
@@ -1677,10 +1978,19 @@ namespace windiskhelper
                         new_vol.Refresh();
 
                         // Format the new volume
-                        Logger.Info("Formatting '" + volume_name + "'");
+                        volume_label = dev_name.Substring(4);
+                        if (String.IsNullOrEmpty(volume_name))
+                        {
+                            Logger.Info("Formatting " + dev_name);
+                        }
+                        else
+                        {
+                            Logger.Info("Formatting " + volume_name);
+                            volume_label = volume_name;
+                        }
                         try
                         {
-                            Async volume_format = new_vol.BeginFormat(FileSystemType.Ntfs, volume_name, 0, true, true, false, null, null);
+                            Async volume_format = new_vol.BeginFormat(FileSystemType.Ntfs, volume_label, 0, true, true, false, null, null);
 
                             // Wait for format to complete
                             while (!volume_format.IsCompleted)
@@ -1698,10 +2008,8 @@ namespace windiskhelper
                     // Assume only a single disk per pack (simple volumes)
                     break;
                 }
-
-                // Continue to the next pack if this one doesn't have disks in it
-                if (volume_name == null) continue;
-                Thread.Sleep(3000);
+                if (!found_disks)
+                    continue;
 
                 // Go through all volumes and make sure they are mounted
                 disk_pack.Refresh();
@@ -1712,35 +2020,34 @@ namespace windiskhelper
                         vol.Mount();
                     }
 
-                    if (pRelabel)
+                    if (RelabelVolumes)
                     {
                         // Verify that the volume label is the same as the IQN name, and relabel as necessary
                         // This is most relevant when cloning a volume
-                        if (vol.Label != volume_name)
+                        if (vol.Label != volume_label)
                         {
-                            Logger.Info("Updating volume label on " + volume_name);
+                            if (String.IsNullOrEmpty(volume_name))
+                                Logger.Info("Updating volume label on " + dev_name);
+                            else
+                                Logger.Info("Updating volume label on " + volume_name);
                             // Oddly, I can't seem to find how to do this with VDS, so going back to plain WMI
                             // This requires using the Win32_LogicalDisk class, which is only intantiated for volumes that use drive letters
-                            // So, temporarily mount this volume to a drive letter, change the label, then unmount the drive letter
+                            // So, temporarily mount this volume to a drive letter, change the label, then remove the drive letter
                             string drive_letter = GetFirstUnusedDriveLetter();
                             vol.AddAccessPath(drive_letter + @":\");
-                            ManagementObjectCollection vol_search = DoWmiQuery("SELECT * FROM Win32_LogicalDisk WHERE DeviceID = '" + drive_letter + ":'", @"root\cimv2");
-                            foreach (ManagementObject vol_obj in vol_search)
+                            ManagementObject volume_obj = DoWmiQuery("SELECT * FROM Win32_LogicalDisk WHERE DeviceID = '" + drive_letter + ":'", @"root\cimv2").Cast<ManagementObject>().First();
+                            try
                             {
-                                try
-                                {
-                                    vol_obj["VolumeName"] = volume_name;
-                                    vol_obj.Put();
-                                }
-                                catch (ManagementException e)
-                                {
-                                    throw ManagementExceptionToInitiatorException(e);
-                                }
-                                finally
-                                {
-                                    vol.DeleteAccessPath(drive_letter + @":\", true);
-                                }
-                                break;
+                                volume_obj["VolumeName"] = volume_name;
+                                volume_obj.Put();
+                            }
+                            catch (ManagementException e)
+                            {
+                                throw ManagementExceptionToInitiatorException(e);
+                            }
+                            finally
+                            {
+                                vol.DeleteAccessPath(drive_letter + @":\", true);
                             }
                         }
                     }
@@ -1751,48 +2058,56 @@ namespace windiskhelper
             }
         }
 
-        private void MountpointHelper(Dictionary<string, string> pDeviceToVolumeMap, bool pForceMountPoints = false)
+        /// <summary>
+        /// Create mountpoints for disk devices
+        /// </summary>
+        /// <param name="DeviceList">Only operate on these devices</param>
+        /// <param name="PortalAddressList">Only operate on devices from iSCSI targets on these portals</param>
+        /// <param name="TargetList">Only operate on devices from these iSCSI targets</param>
+        /// <param name="ForceMountPoints">Remove any drive letters and only use mount points</param>
+        public void MountpointDisks(List<string> DeviceList = null, List<string> PortalAddressList = null, List<string> TargetList = null,bool ForceMountPoints = false)
         {
-            if (pDeviceToVolumeMap.Count <= 0)
-                return;
+            // Filters
+            bool filter_devices = DeviceList != null && DeviceList.Count > 0;
+            bool filter_iscsi = (PortalAddressList != null && PortalAddressList.Count > 0) || (TargetList != null && TargetList.Count > 0);
+            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
+            if (filter_iscsi)
+            {
+                filtered_iscsi_device_list = GetFilteredDeviceList(PortalAddressList, TargetList);
+                if (filtered_iscsi_device_list.Count <= 0)
+                    return;
+            }
+            Dictionary<string, string> iscsi_map = GetDeviceToIscsiVolumeMap();
 
-            // Assume disk == partition == volume == mount point
-            // 1:1:1:1
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
 
-            HashSet<string> warned512e = new HashSet<string>();
-            // Find all disks in all disk packs and make sure they are partitioned, formatted and mounted
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                string dev_name = null;
-                string volume_name = null;
+                bool match = false;
+                string dev_name = "";
+
+                // Make sure this pack contains disks that meet the filter criteria
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    dev_name = disk.Name.Replace('?', '.');
-                    if (!pDeviceToVolumeMap.ContainsKey(dev_name))
-                        continue;
+                    dev_name = disk.Name.Replace("?", ".");
+                    if (filter_devices && !DeviceList.Contains(dev_name))
+                        break;
+                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
+                        break;
 
-                    volume_name = pDeviceToVolumeMap[dev_name];
-                    if (disk.BytesPerSector != 512 && !warned512e.Contains(volume_name))
-                    {
-                        if (Environment.OSVersion.Version.Major < 6 ||
-                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
-                        {
-                            Logger.Warn(volume_name + " is not using 512e - this can cause Windows issues.");
-                            warned512e.Add(volume_name);
-                        }
-                    }
-                    // Assume only a single disk per pack (simple volumes)
-                    break;
+                    match = true;
                 }
+                if (!match)
+                    continue;
 
-                // Continue to the next pack if this one doesn't have disks in it
-                if (volume_name == null) continue;
-                Thread.Sleep(3000);
+                string volume_name = "";
+                if (iscsi_map.Keys.Contains(dev_name))
+                    volume_name = iscsi_map[dev_name];
+                else
+                    volume_name = dev_name.Substring(4);
 
-                // Go through all volumes and make sure they are mounted
-                disk_pack.Refresh();
+                // Make sure all the volumes in this pack have a mount point
                 foreach (Volume vol in disk_pack.Volumes)
                 {
                     if (!vol.IsMounted)
@@ -1800,7 +2115,7 @@ namespace windiskhelper
                         vol.Mount();
                     }
 
-                    if (pForceMountPoints)
+                    if (ForceMountPoints)
                     {
                         // If this option is set, forceably remove drive letters and replace with folder mount points
                         // This usually is only relevant when Windows automounts a clone of another volume
@@ -1816,7 +2131,7 @@ namespace windiskhelper
                             // Remove any mount points that are just drive letters
                             if (mount_point.Length < 4)
                             {
-                                Logger.Debug("Removing mount point " + mount_point + " from volume " + volume_name);
+                                Logger.Debug("Removing mount point " + mount_point + " from " + volume_name);
                                 vol.DeleteAccessPath(mount_point, true);
                             }
                         }
@@ -1833,14 +2148,15 @@ namespace windiskhelper
                         // Mount the volume
                         vol.AddAccessPath(mount_point);
                     }
-
-                    // Assume only a single volume/partition per disk
-                    break;
+                    break; // Assume single partition per volume
                 }
             }
         }
 
-        public void DebugShowAllVDSProviders()
+        /// <summary>
+        /// Dump to the screen as much information as possible about the available VDS providers
+        /// </summary>
+        public void DebugShowAllVdsProviders()
         {
             Service vds_service = ConnectVdsService();
             vds_service.HardwareProvider = true;
@@ -1851,6 +2167,9 @@ namespace windiskhelper
             }
         }
 
+        /// <summary>
+        /// Dump to the screen as much information as possible about the current disk devices
+        /// </summary>
         public void DebugShowAllDiskDevices()
         {
             Logger.Info("==========================   Dumping VDS database  ==========================");
@@ -1892,6 +2211,9 @@ namespace windiskhelper
             }
         }
 
+        /// <summary>
+        /// Wait for all iSCSI sessions to have valid disk devices
+        /// </summary>
         private void WaitForDiskDevices()
         {
             Logger.Info("Waiting for disk devices");
@@ -1995,42 +2317,39 @@ namespace windiskhelper
             }
         }
 
-        private void ValidateChapUser(string pChapUser)
+        /// <summary>
+        /// Add a new iSCSI target portal
+        /// </summary>
+        /// <param name="PortalAddress"></param>
+        /// <param name="ChapUsername"></param>
+        /// <param name="ChapInitSecret"></param>
+        /// <param name="ChapTargSecret"></param>
+        /// <param name="RefreshTargetList"></param>
+        public void AddTargetPortal(string PortalAddress, string ChapUsername = null, string ChapInitSecret = null, string ChapTargSecret = null, bool RefreshTargetList = true)
         {
-            return;
-            // This appears to be working better now
-            //if (!Regex.IsMatch(pChapUser, "^[a-zA-Z0-9]+$"))
-            //{
-            //    throw new IscsiException("The Microsft iSCSI initiator is unreliable unless the CHAP username is strictly alphanumeric");
-            //}
-        }
-
-        public void AddTargetPortal(string pPortalAddress, bool pRefreshTargetList = true)
-        {
-            AddTargetPortal(pPortalAddress, null, null, pRefreshTargetList);
-        }
-
-        public void AddTargetPortal(string pPortalAddress, string pChapUsername, string pChapSecret, bool pRefreshTargetList = true)
-        {
-            ValidateChapUser(pChapUsername);
+            // Set or unset the target secret
+            SetIscsiChapTargetSecret(ChapTargSecret);
 
             // Create the new portal
             ManagementObject portal = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_SendTargetPortalClass");
-            portal["PortalAddress"] = pPortalAddress;
+            portal["PortalAddress"] = PortalAddress;
             portal["PortalPort"] = 3260;
 
-            if (!String.IsNullOrEmpty(pChapUsername) && !String.IsNullOrEmpty(pChapSecret))
+            if (!String.IsNullOrEmpty(ChapUsername) && !String.IsNullOrEmpty(ChapInitSecret))
             {
                 // Set up login options (CHAP)
                 ManagementObject login_options = InstantiateWmiClass(@"root\wmi", "MSiSCSIInitiator_TargetLoginOptions");
-                login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
-                login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(pChapUsername);
-                login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(pChapSecret);
+                login_options["Username"] = System.Text.Encoding.ASCII.GetBytes(ChapUsername);
+                login_options["Password"] = System.Text.Encoding.ASCII.GetBytes(ChapInitSecret);
+                if (String.IsNullOrEmpty(ChapTargSecret))
+                    login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_CHAP_AUTH_TYPE;
+                else
+                    login_options["AuthType"] = ISCSI_AUTH_TYPES.ISCSI_MUTUAL_CHAP_AUTH_TYPE;
 
                 portal["LoginOptions"] = login_options;
             }
 
-            // Commit the change to the initiator
+            // Commit the new portal to the initiator
             try
             {
                 portal.Put();
@@ -2040,61 +2359,103 @@ namespace windiskhelper
                 throw ManagementExceptionToInitiatorException(e);
             }
 
-            if (pRefreshTargetList)
+            if (RefreshTargetList)
             {
                 // For some WMI reason we can't reuse the portal object we already have to simply execute methods like "Refresh", we have to get a new instance
-                // Might as well call the helper function taht does it all forus
-                RefreshTargetPortal(pPortalAddress);
+                // Might as well call the helper function that does it all for us
+                RefreshIscsiTargetPortals(new List<string>() { PortalAddress });
             }
         }
 
-        public List<string> GetAllPortals()
+        /// <summary>
+        /// Set the CHAP target secret
+        /// </summary>
+        /// <param name="TargetSecret"></param>
+        public void SetIscsiChapTargetSecret(string TargetSecret)
+        {
+            ManagementObject init_methods = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_MethodClass").Cast<ManagementObject>().First();
+            ManagementBaseObject input_params = init_methods.GetMethodParameters("SetIScsiInitiatorCHAPSharedSecret");
+            if (String.IsNullOrEmpty(TargetSecret))
+                input_params["SharedSecret"] = null;
+            else
+                input_params["SharedSecret"] = System.Text.Encoding.ASCII.GetBytes(TargetSecret);
+            try
+            {
+                init_methods.InvokeMethod("SetIScsiInitiatorCHAPSharedSecret", input_params, null);
+            }
+            catch (ManagementException e)
+            {
+                throw ManagementExceptionToInitiatorException(e);
+            }
+        }
+
+        /// <summary>
+        /// Remove the CHAP target secret
+        /// </summary>
+        public void ClearIscsiChapTargetSecret()
+        {
+            // Set or unset the target secret
+            ManagementObject init_methods = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_MethodClass").Cast<ManagementObject>().First();
+            ManagementBaseObject input_params = init_methods.GetMethodParameters("SetIScsiInitiatorCHAPSharedSecret");
+            input_params["SharedSecret"] = null;
+            try
+            {
+                init_methods.InvokeMethod("SetIScsiInitiatorCHAPSharedSecret", input_params, null);
+            }
+            catch (ManagementException e)
+            {
+                throw ManagementExceptionToInitiatorException(e);
+            }
+        }
+
+        /// <summary>
+        /// Get a list of the currently configured iSCSI target portals
+        /// </summary>
+        /// <returns></returns>
+        public List<IscsiPortalInfo> ListIscsiTargetPortals()
         {
             // Query the initiator for a list of target portals
             ManagementObjectCollection portal_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SendTargetPortalClass");
 
             // Iterate through list and make a list to return
-            List<string> portals_to_return = new List<string>();
-            foreach (ManagementObject portal in portal_list)
+            List<IscsiPortalInfo> portals_to_return = new List<IscsiPortalInfo>();
+
+            foreach (ManagementObject portal_wmi in portal_list)
             {
-                string portal_address = portal["PortalAddress"] as String;
-                if (!String.IsNullOrEmpty(portal_address))
-                    portals_to_return.Add(portal_address);
+                IscsiPortalInfo portal = new IscsiPortalInfo();
+                portal.PortalAddress = portal_wmi["PortalAddress"] as String;
+                portal.PortalPort = (UInt16)portal_wmi["PortalPort"];
+                var login_options = portal_wmi["LoginOptions"] as ManagementBaseObject;
+                portal.AuthType = ((ISCSI_AUTH_TYPES)(UInt32)login_options["AuthType"]).GetDescription();
+                byte[] username_encoded = login_options["Username"] as byte[];
+                if (username_encoded != null)
+                    portal.Username = System.Text.Encoding.Default.GetString(username_encoded);
+                portals_to_return.Add(portal);
             }
             return portals_to_return;
         }
 
-        public void RemoveTargetPortal(string pPortalAddress)
+        /// <summary>
+        /// Remove the specified list of iSCSI target portals.  Pass null to remove all portals.
+        /// </summary>
+        /// <param name="PortalAddressList"></param>
+        public void RemoveIscsiTargetPortals(List<string> PortalAddressList = null)
         {
-            // Search for the requested portal
-            ManagementObjectCollection portal_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SendTargetPortalClass WHERE PortalAddress = '" + pPortalAddress.ToString() + "'");
-            if (portal_list.Count <= 0)
-            {
-                throw new InitiatorException("Could not find portal '" + pPortalAddress + "'");
-            }
+            bool filter_portals = PortalAddressList != null && PortalAddressList.Count > 0;
 
-            foreach (ManagementObject portal in portal_list)
-            {
-                Logger.Debug("Removing portal '" + portal["PortalAddress"] + "'");
-                try
-                {
-                    portal.Delete();
-                }
-                catch (ManagementException e)
-                {
-                    throw ManagementExceptionToInitiatorException(e);
-                }
-
-                // If for some reason we found more than one portal with the requested address, break so we only operate on the first one
-                break;
-            }
-
-        }
-
-        public void RemoveAllTargetPortals()
-        {
             // Get a list of all target portals
             ManagementObjectCollection portal_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SendTargetPortalClass");
+
+            // Make sure all the requested portals are in the list
+            if (filter_portals)
+            {
+                string[] missing_portals = portal_list.Cast<ManagementObject>().Select(x => x["PortalAddress"] as String).Except(PortalAddressList).ToArray();
+                if (missing_portals.Length > 0)
+                {
+                    throw new InitiatorException("Could not find requested portals: [" + String.Join(",", missing_portals) + "]");
+                }
+            }
+
             if (portal_list.Count <= 0)
             {
                 return;
@@ -2103,7 +2464,11 @@ namespace windiskhelper
             // Iterate through all portals and delete each one
             foreach (ManagementObject portal in portal_list)
             {
-                Logger.Debug("Removing portal '" + portal["PortalAddress"] + "'");
+                string portal_address = portal["PortalAddress"] as String;
+                if (filter_portals && !PortalAddressList.Contains(portal_address))
+                    continue;
+
+                Logger.Debug("Removing portal '" + portal_address + "'");
                 try
                 {
                     portal.Delete();
@@ -2114,175 +2479,104 @@ namespace windiskhelper
                 }
             }
         }
-
-        public void RefreshAllPortals()
+        
+        /// <summary>
+        /// Refresh the specified list of iSCSI target portals
+        /// </summary>
+        /// <param name="PortalAddressList"></param>
+        public void RefreshIscsiTargetPortals(List<string> PortalAddressList = null)
         {
-            ManagementObjectCollection method_query = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_MethodClass");
-            foreach (ManagementObject method in method_query)
+            if (PortalAddressList == null || PortalAddressList.Count <= 0)
             {
+                // See if there are any portals to refresh
+                ManagementObjectCollection portal_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SendTargetPortalClass");
+                if (portal_list.Count <= 0)
+                {
+                    //See if there are still any targets left to clean up
+                    ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
+                    if (target_list.Count <= 0)
+                    {
+                        return;
+                    }
+                }
+
+                // Refresh all target portals
+                ManagementObject init_methods = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_MethodClass").Cast<ManagementObject>().First();
                 try
                 {
                     Logger.Debug("Requesting refresh for all portals");
-                    method.InvokeMethod("RefreshTargetList", null);
+                    init_methods.InvokeMethod("RefreshTargetList", null);
                 }
                 catch (ManagementException e)
                 {
                     throw ManagementExceptionToInitiatorException(e);
                 }
             }
-            return;
-        }
-
-        public void RefreshTargetPortal(string pPortalAddress)
-        {
-            //
-            // For some reason, calling Refresh on the SendTargetPortal object only shows when new volumes are created, but does not remove old volumes that were deleted.
-            // Only RefreshTargetList on the MethodClass object fully refreshes portals, including removing targets, but it only operates on all targets at once.
-            //
-
-            // Get the portal object from the initiator
-            Logger.Debug("Searching for portal '" + pPortalAddress + "'");
-            ManagementObjectCollection portal_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SendTargetPortalClass WHERE PortalAddress = '" + pPortalAddress.ToString() + "'");
-            if (portal_list.Count <= 0)
+            else
             {
-                throw new InitiatorException("Could not find portal '" + pPortalAddress + "'");
-            }
+                // Refresh each individual portal
 
-            foreach (ManagementObject portal in portal_list)
-            {
-                try
+                //
+                // Note that calling Refresh on the SendTargetPortal object only shows when new volumes are created, but does not remove old volumes that were deleted.
+                // Only RefreshTargetList on the MethodClass object fully refreshes portals, including removing targets, but it only operates on all targets at once.
+                //
+
+                ManagementObjectCollection portal_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SendTargetPortalClass");
+
+                // Make sure all the requested portals are in the list
+                string[] missing_portals = portal_list.Cast<ManagementObject>().Select(x => x["PortalAddress"] as String).Except(PortalAddressList).ToArray();
+                if (missing_portals.Length > 0)
+                {
+                    throw new InitiatorException("Could not find requested portals: [" + String.Join(",", missing_portals) + "]");
+                }
+                
+                foreach (ManagementObject portal in portal_list)
                 {
                     string portal_address = portal["PortalAddress"] as String;
-                    if (!String.IsNullOrEmpty(portal_address))
-                        Logger.Debug("Requesting refresh on portal '" + portal_address + "'");
-
-                    // Call the "Refresh" method to refresh the list of targets available on this target portal
-                    portal.InvokeMethod("Refresh", null);
-                }
-                catch (ManagementException e)
-                {
-                    throw ManagementExceptionToInitiatorException(e);
-                }
-
-                // If for some reason we found more than one portal with the requested address, break so we only operate on the first one
-                break;
-            }
-        }
-
-        public List<IscsiTargetInfo> GetLoggedInTargets()
-        {
-            // Get a list of session objects from the initiator
-            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-
-            // Find which targets have sessions (are logged in)
-            HashSet<string> targets_with_sessions = new HashSet<string>();
-            foreach (ManagementObject session in session_list)
-            {
-                string target_name = session["TargetName"] as String;
-                if (target_name != null && !targets_with_sessions.Contains(target_name))
-                    targets_with_sessions.Add(target_name);
-            }
-
-            List<IscsiTargetInfo> targets_to_return = new List<IscsiTargetInfo>();
-
-            // Get the target objects from the initiator
-            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
-
-            foreach (ManagementObject target in target_list)
-            {
-                // Ignore targets with no sessions
-                if (!targets_with_sessions.Contains(target["TargetName"] as String))
-                    continue;
-
-                IscsiTargetInfo target_info = new IscsiTargetInfo();
-                target_info.InitiatorName = target["InitiatorName"] as String;
-                target_info.TargetFlags = (UInt32)target["TargetFlags"];
-                target_info.TargetIqn = target["TargetName"] as String;
-                if (targets_with_sessions.Contains(target_info.TargetIqn))
-                    target_info.IsLoggedIn = true;
-                else
-                    target_info.IsLoggedIn = false;
-
-                // Find the first target portal this target is associated with
-                var portal_groups = target["PortalGroups"] as ManagementBaseObject[];
-                foreach (var portal_group in portal_groups)
-                {
-                    var portals = portal_group["Portals"] as ManagementBaseObject[];
-                    foreach (var portal in portals)
+                    if (PortalAddressList.Contains(portal_address))
                     {
-                        target_info.TargetPortal = portal["Address"] as String;
-                        break;
+                        Logger.Debug("Reqesting refresh on " + portal_address);
+                        try
+                        {
+                            portal.InvokeMethod("Refresh", null);
+                        }
+                        catch (ManagementException e)
+                        {
+                            throw ManagementExceptionToInitiatorException(e);
+                        }
                     }
-                    break;
                 }
-                targets_to_return.Add(target_info);
             }
-            return targets_to_return;
         }
 
-        public List<IscsiTargetInfo> GetLoggedOutTargets()
+        /// <summary>
+        /// Get a list of iSCSI target information
+        /// </summary>
+        /// <param name="PortalAddressList">Only include targets from these portals</param>
+        /// <param name="LoginState">Only include targets in this state</param>
+        /// <returns></returns>
+        public List<IscsiTargetInfo> ListIscsiTargets(List<string> PortalAddressList = null, IscsiTargetLoginState LoginState = IscsiTargetLoginState.Any, bool IncludeBootVolume = false)
         {
+            bool filter_portal = PortalAddressList != null && PortalAddressList.Count > 0;
+
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
 
-            // Find which targets have sessions (are logged in)
-            HashSet<string> targets_with_sessions = new HashSet<string>();
-            foreach (ManagementObject session in session_list)
-            {
-                string target_name = session["TargetName"] as String;
-                if (target_name != null && !targets_with_sessions.Contains(target_name))
-                    targets_with_sessions.Add(target_name);
-            }
-
-            List<IscsiTargetInfo> targets_to_return = new List<IscsiTargetInfo>();
-
-            // Get the target objects from the initiator
-            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
-
-            foreach (ManagementObject target in target_list)
-            {
-                // Ignore targets with sessions
-                if (targets_with_sessions.Contains(target["TargetName"] as String))
-                    continue;
-
-                IscsiTargetInfo target_info = new IscsiTargetInfo();
-                target_info.InitiatorName = target["InitiatorName"] as String;
-                target_info.TargetFlags = (UInt32)target["TargetFlags"];
-                target_info.TargetIqn = target["TargetName"] as String;
-                if (targets_with_sessions.Contains(target_info.TargetIqn))
-                    target_info.IsLoggedIn = true;
-                else
-                    target_info.IsLoggedIn = false;
-
-                // Find the first target portal this target is associated with
-                var portal_groups = target["PortalGroups"] as ManagementBaseObject[];
-                foreach (var portal_group in portal_groups)
-                {
-                    var portals = portal_group["Portals"] as ManagementBaseObject[];
-                    foreach (var portal in portals)
-                    {
-                        target_info.TargetPortal = portal["Address"] as String;
-                        break;
-                    }
-                    break;
-                }
-                targets_to_return.Add(target_info);
-            }
-            return targets_to_return;
-        }
-        
-        public List<IscsiTargetInfo> GetAllTargets()
-        {
-            // Get a list of session objects from the initiator
-            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-
-            // Find which targets have sessions (are logged in)
+            // Find which targets have sessions (are logged in) and see if any look like the boot volume
+            string boot_volume = "";
             HashSet<string> targets_with_sessions = new HashSet<string>();
             foreach (ManagementObject session in session_list)
             {
                 string target_name = session["TargetName"] as string;
                 if (target_name != null && !targets_with_sessions.Contains(target_name))
                     targets_with_sessions.Add(target_name);
+
+                // This is a pretty weak check - just looking that this device is not disk 0
+                // But this should work with all known ways to configure boot from iSCSI
+                var device_list = session["Devices"] as ManagementBaseObject[];
+                UInt32 dev_number = (UInt32)device_list[0]["DeviceNumber"];
+                if (dev_number == 0)
+                    boot_volume = target_name;
             }
 
             List<IscsiTargetInfo> targets_to_return = new List<IscsiTargetInfo>();
@@ -2292,133 +2586,128 @@ namespace windiskhelper
 
             foreach (ManagementObject target in target_list)
             {
-                IscsiTargetInfo target_info = new IscsiTargetInfo();
-                target_info.InitiatorName = target["InitiatorName"] as String;
-                target_info.TargetFlags = (UInt32)target["TargetFlags"];
-                target_info.TargetIqn = target["TargetName"] as String;
-                if (targets_with_sessions.Contains(target_info.TargetIqn))
-                    target_info.IsLoggedIn = true;
-                else
-                    target_info.IsLoggedIn = false;
+                string target_name = target["TargetName"] as String;
 
-                // Find the first target portal this target is associated with
+                // Ignore targets with the wrong login state
+                if (LoginState == IscsiTargetLoginState.LoggedIn && !targets_with_sessions.Contains(target_name))
+                    continue;
+                if (LoginState == IscsiTargetLoginState.LoggedOut && targets_with_sessions.Contains(target_name))
+                    continue;
+
+                // Ignore this target if it looks like the boot volume
+                if (!IncludeBootVolume && target_name == boot_volume)
+                    continue;
+                
+                // Get the portal address this target is associated with (assume only one)
+                string target_portal = "";
                 var portal_groups = target["PortalGroups"] as ManagementBaseObject[];
                 foreach (var portal_group in portal_groups)
                 {
                     var portals = portal_group["Portals"] as ManagementBaseObject[];
                     foreach (var portal in portals)
                     {
-                        target_info.TargetPortal = portal["Address"] as String;
-                        break;
+                        target_portal = portal["Address"] as String;
                     }
-                    break;
                 }
+
+                // Ignore this target is it is not on a requested portal
+                if (filter_portal && !PortalAddressList.Contains(target_portal))
+                    continue;
+
+                IscsiTargetInfo target_info = new IscsiTargetInfo();
+                target_info.DiscoveryMechanism = target["DiscoveryMechanism"] as String;
+                target_info.InitiatorName = target["InitiatorName"] as String;
+                target_info.TargetFlags = (UInt32)target["TargetFlags"];
+                target_info.TargetIqn = target_name;
+                if (targets_with_sessions.Contains(target_info.TargetIqn))
+                    target_info.IsLoggedIn = true;
+                else
+                    target_info.IsLoggedIn = false;
+                target_info.TargetPortal = target_portal;
+
+                // This never returns the CHAP info even when using CHAP - the class definition includes it but the values aren't present
+                //var login_options = target["LoginOptions"] as ManagementBaseObject;
+                //if (login_options != null)
+                //{
+                //    target_info.AuthType = ((ISCSI_AUTH_TYPES)(UInt32)login_options["AuthType"]).GetDescription();
+                //    byte[] username_encoded = login_options["Username"] as byte[];
+                //    target_info.Username = System.Text.Encoding.Default.GetString(username_encoded);
+                //}
+
                 targets_to_return.Add(target_info);
             }
             return targets_to_return;
         }
 
-        public List<IscsiSessionInfo> GetAllSessions(bool pIncludeBootVolume = false)
+        /// <summary>
+        /// Get a list of iSCSI session information
+        /// </summary>
+        /// <param name="PortalAddressList">Only include sessions from these portals</param>
+        /// <param name="IncludeBootVolume">Include the boot volume if it is present (Boot from SAN)</param>
+        /// <returns></returns>
+        public List<IscsiSessionInfo> ListIscsiSessions(List<string> PortalAddressList = null, bool IncludeBootVolume = false)
         {
+            bool filter_portal = PortalAddressList != null && PortalAddressList.Count > 0;
+
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
 
             List<IscsiSessionInfo> sessions_to_return = new List<IscsiSessionInfo>();
             foreach (ManagementObject session in session_list)
             {
+                var device_list = session["Devices"] as ManagementBaseObject[];
+                UInt32 dev_number = (UInt32)device_list[0]["DeviceNumber"];
+
                 // Make sure this is not the boot volume
                 // This is a pretty weak check - just looking that this device is not disk 0
                 // But this should work with all known ways to configure boot from iSCSI
-                if (!pIncludeBootVolume)
-                {
-                    var device_list = session["Devices"] as ManagementBaseObject[];
-                    bool isboot = false;
-                    foreach (var dev in device_list)
-                    {
-                        if ((UInt32)dev["DeviceNumber"] == 0)
-                        {
-                            isboot = true;
-                            break;
-                        }
-                    }
-                    if (isboot)
-                        continue;
-                }
+                if (!IncludeBootVolume && dev_number == 0)
+                    continue;
 
                 IscsiSessionInfo sess = new IscsiSessionInfo();
+                sess.DeviceNumber = dev_number;
+                sess.LegacyDeviceName = device_list[0]["LegacyName"] as String;
                 sess.InitiatorIqn = session["InitiatorName"] as string;
                 sess.SessionId = session["SessionId"] as string;
                 sess.TargetIqn = session["TargetName"] as string;
                 var connection_list = session["ConnectionInformation"] as ManagementBaseObject[];
                 foreach (var conn in connection_list)
                 {
-                    // We are assuming 1 connection per session, which is the case for SolidFire
+                    // We are assuming 1 connection per session
                     sess.InitiatorAddress = conn["InitiatorAddress"] as string;
                     sess.InitiatorPort = (UInt16)conn["InitiatorPort"];
                     sess.TargetAddress = conn["TargetAddress"] as string;
                     sess.TargetPort = (UInt16)conn["TargetPort"];
                 }
+
+                // Ignore targets that are not from the requested portals
+                // The MS initiator is currently implemented such that the 'target address' for a session is actually the portal address, not the final endpoint of the session
+                if (filter_portal && !PortalAddressList.Contains(sess.TargetAddress))
+                    continue;
+
                 sessions_to_return.Add(sess);
             }
 
             return sessions_to_return;
         }
 
-        public List<IscsiTargetInfo> GetTargetsOnPortal(String pPortalAddress)
+        /// <summary>
+        /// Log out of all of the sessions on iSCSI targets
+        /// </summary>
+        /// <param name="PortalAddress">Only log out of targets on this portal</param>
+        /// <param name="TargetsToLogout">Only log out of these targets</param>
+        /// <param name="RemovePersistent">Remove the persistent logins so the targets won't relogin after reboot</param>
+        /// <returns>The number of targets logged out</returns>
+        public int LogoutIscsiTargets(List<string> PortalAddressList = null, List<string> TargetsToLogout = null, bool RemovePersistent = true)
         {
-            // Get a list of session objects from the initiator
-            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-
-            // Find which targets have sessions (are logged in)
-            HashSet<string> targets_with_sessions = new HashSet<string>();
-            foreach (ManagementObject session in session_list)
+            // Determine which targets we are supposed to log out of
+            HashSet<string> filtered_target_names = GetFilteredTargetSet(PortalAddressList, TargetsToLogout);
+            if (filtered_target_names.Count <= 0)
             {
-                string target_name = session["TargetName"] as string;
-                if (target_name != null && !targets_with_sessions.Contains(target_name))
-                    targets_with_sessions.Add(target_name);
+                Logger.Warn("Did not find any targets to log in to");
+                return 0;
             }
 
-            List<IscsiTargetInfo> targets_to_return = new List<IscsiTargetInfo>();
-
-            // Get the target objects from the initiator
-            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
-
-            foreach (ManagementObject target in target_list)
-            {
-                // This works with the current version of MS iSCSI but it's a hack based on the string format of the DiscoveryMechanism field
-                //if (target["DiscoveryMechanism"].ToString().Contains(pPortalAddress.ToString())) { }
- 
-                // Get a list of portal groups, on each portal group get a list of portals, on each portal compare the portal address to the one we are looking for
-                var portal_groups = target["PortalGroups"] as ManagementBaseObject[];
-                foreach (var portal_group in portal_groups)
-                {
-                    var portals = portal_group["Portals"] as ManagementBaseObject[];
-                    foreach (var portal in portals)
-                    {
-                        if (portal["Address"].ToString() == pPortalAddress.ToString())
-                        {
-                            // This target is from the portal we are interested in
-                            IscsiTargetInfo target_info = new IscsiTargetInfo();
-                            target_info.InitiatorName = target["InitiatorName"] as String;
-                            target_info.TargetFlags = (UInt32)target["TargetFlags"];
-                            target_info.TargetPortal = portal["Address"] as String;
-                            target_info.TargetIqn = target["TargetName"] as String;
-                            if (targets_with_sessions.Contains(target_info.TargetIqn))
-                                target_info.IsLoggedIn = true;
-                            else
-                                target_info.IsLoggedIn = false;
-                            targets_to_return.Add(target_info);
-                        }
-                    }
-                }
-            }
-
-            return targets_to_return;
-        }
-
-        public void LogoutAllTargets(bool pRemovePersistent)
-        {
-            Logger.Info("Querying the list of targets/sessions");
             // Make a lookup table of already existing persistent logins
             ManagementObjectCollection persistent_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_PersistentLoginClass");
             Dictionary<string, ManagementObject> persistent_logins = new Dictionary<string, ManagementObject>();
@@ -2427,47 +2716,45 @@ namespace windiskhelper
                 persistent_logins.Add(persistent_login["TargetName"].ToString(), persistent_login);
             }
 
+            // Get the list of target objects from the initiator
+            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
+
             // Get a list of session objects from the initiator
             ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-            
-            // Log out of every session
-            Logger.Info("Logging out all sessions");
+
+            // Find the sessions that belong to the list of targets and log out of them
+            int logged_out_targets = 0;
             foreach (ManagementObject session in session_list)
             {
-                // Make sure this is not the boot volume
-                // This is a pretty weak check - just looking that this device is not disk 0
-                // But this should work with all known ways to configure boot from iSCSI
-                var device_list = session["Devices"] as ManagementBaseObject[];
-                bool isboot = false;
-                foreach (var dev in device_list)
-                {
-                    if ((UInt32)dev["DeviceNumber"] == 0)
-                    {
-                        isboot = true;
-                        break;
-                    }
-                }
-                if (isboot)
-                    continue;
-
-                LogoutSessionClassHelper(session);
                 string target_name = session["TargetName"] as String;
-                if (pRemovePersistent && persistent_logins.ContainsKey(target_name))
+                string session_id = session["SessionId"] as String;
+                if (!String.IsNullOrEmpty(target_name) && filtered_target_names.Contains(target_name))
                 {
-                    Logger.Debug("Removing persistent login for target '" + target_name + "'");
-                    try
+                    // Log out of the session
+                    Logger.Info("Logging out of session '" + session_id + "' for target '" + target_name + "'");
+                    LogoutSessionClassHelper(session);
+                    if (RemovePersistent && persistent_logins.ContainsKey(target_name))
                     {
-                        persistent_logins[target_name].Delete();
+                        Logger.Debug("Removing persistent login for target '" + target_name + "'");
+                        try
+                        {
+                            persistent_logins[target_name].Delete();
+                        }
+                        catch (ManagementException e)
+                        {
+                            throw ManagementExceptionToInitiatorException(e);
+                        }
                     }
-                    catch (ManagementException e)
-                    {
-                        throw ManagementExceptionToInitiatorException(e);
-                    }
+                    logged_out_targets++;
                 }
             }
+            return logged_out_targets;
         }
 
-        public void RemovePersistentLogins()
+        /// <summary>
+        /// Remove all iSCSI persistent logins
+        /// </summary>
+        public void ClearIscsiPersistentLogins()
         {
             ManagementObjectCollection persistent_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_PersistentLoginClass");
             foreach (ManagementObject persistent_login in persistent_list)
@@ -2483,100 +2770,40 @@ namespace windiskhelper
             }
         }
 
-        public void LogoutTargetsOnPortal(string pPortalAddress, bool pRemovePersistent)
+        /// <summary>
+        /// Log in to iSCSI targets
+        /// </summary>
+        /// <param name="ChapUsername">Use this CHAP username for login</param>
+        /// <param name="ChapInitSecret">Use this CHAP initiator secret for login</param>
+        /// <param name="ChapTargSecret">Use this CHAP target secret for login</param>
+        /// <param name="PortalAddressList">Only log in to targets from these portals</param>
+        /// <param name="TargetsToLogin">Only log in to this list of targets</param>
+        /// <param name="MakePersistent">Create persistent logins (relogin after reboot)</param>
+        /// <returns></returns>
+        public int LoginIscsiTargets(string ChapUsername = null, string ChapInitSecret = null, string ChapTargSecret = null, List<string> PortalAddressList = null, List<string> TargetsToLogin = null, bool MakePersistent = false)
         {
-            // Make a lookup table of already existing persistent logins
-            ManagementObjectCollection persistent_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_PersistentLoginClass");
-            Dictionary<string, ManagementObject> persistent_logins = new Dictionary<string, ManagementObject>();
-            foreach (ManagementObject persistent_login in persistent_list)
+            // Determine which targets we are supposed to log in to
+            HashSet<string> filtered_target_names = GetFilteredTargetSet(PortalAddressList, TargetsToLogin);
+            if (filtered_target_names.Count <= 0)
             {
-                persistent_logins.Add(persistent_login["TargetName"].ToString(), persistent_login);
+                Logger.Warn("Did not find any targets to log in to");
+                return 0;
             }
 
-            // Get the list of target objects from the initiator
-            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
-
-            // Make a list of targets on the specified portal
-            HashSet<string> targets_to_logout = new HashSet<string>();
-            foreach (ManagementObject target in target_list)
-            {
-                // This works with the current version of MS iSCSI but it's a hack based on the string format of the DiscoveryMechanism field
-                //if (target["DiscoveryMechanism"].ToString().Contains(pPortalAddress.ToString())) { }
-
-                // Get a list of portal groups, on each portal group get a list of portals, on each portal compare the portal address to the one we are looking for
-                var portal_groups = target["PortalGroups"] as ManagementBaseObject[];
-                foreach (var portal_group in portal_groups)
-                {
-                    var portals = portal_group["Portals"] as ManagementBaseObject[];
-                    foreach (var portal in portals)
-                    {
-                        if (portal["Address"].ToString() == pPortalAddress.ToString())
-                        {
-                            // This target is from the portal we are interested in
-                            targets_to_logout.Add(target["TargetName"].ToString());
-                        }
-                    }
-                }
-            }
-
-            // Get a list of session objects from the initiator
-            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-
-            // Find the sessions that belong to targets on the specified portal and log out of them
-            foreach (ManagementObject session in session_list)
-            {
-                string target_name = session["TargetName"] as String;
-                if (!String.IsNullOrEmpty(target_name) && targets_to_logout.Contains(target_name))
-                {
-                    // Log out of the session
-                    LogoutSessionClassHelper(session);
-                    if (pRemovePersistent && persistent_logins.ContainsKey(target_name))
-                    {
-                        Logger.Debug("Removing persistent login for target '" + target_name + "'");
-                        try
-                        {
-                            persistent_logins[target_name].Delete();
-                        }
-                        catch (ManagementException e)
-                        {
-                            throw ManagementExceptionToInitiatorException(e);
-                        }
-                    }
-                }
-            }
-        }
-
-        public void LoginAllTargets(bool pPersistent = false)
-        {
-            LoginAllTargets(null, null, pPersistent);
-        }
-
-        public void LoginAllTargets(string pChapUsername, string pChapSecret, bool pPersistent = false)
-        {
-            if (!String.IsNullOrEmpty(pChapUsername))
-            {
-                ValidateChapUser(pChapUsername);
-            }
-
-            // Get a list of session objects from the initiator
-            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-
-            // Find which targets have sessions (are logged in)
+            // Find which targets already have sessions (are logged in)
             HashSet<string> targets_with_sessions = new HashSet<string>();
+            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
             foreach (ManagementObject session in session_list)
             {
                 string target_name = session["TargetName"] as string;
-                if (target_name != null && !targets_with_sessions.Contains(target_name))
+                if (target_name != null && !targets_with_sessions.Contains(target_name) && filtered_target_names.Contains(target_name))
                 {
                     Logger.Debug("Target " + target_name + " already has one or more sessions");
                     targets_with_sessions.Add(target_name);
                 }
             }
 
-            // Get a list of targets from the initiator
-            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
-
-            // Make a lookup table of already existing persistent logins
+            // Make a table of existing persistent logins
             ManagementObjectCollection persistent_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_PersistentLoginClass");
             Dictionary<string, ManagementObject> persistent_logins = new Dictionary<string, ManagementObject>();
             foreach (ManagementObject login in persistent_list)
@@ -2585,427 +2812,183 @@ namespace windiskhelper
                 persistent_logins.Add(target, login);
             }
 
-            // Log in to each target that does not already have a session
-            InitiatorException last_exception = null;
+            // Log in to each target
+            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
+            int logged_in_targets = 0;
             foreach (ManagementObject target in target_list)
             {
                 string target_name = target["TargetName"] as String;
-                if (!String.IsNullOrEmpty(target_name) && !targets_with_sessions.Contains(target_name))
-                {
-                    // Remove the persistent login for this target if it exists
-                    if (persistent_logins.ContainsKey(target_name))
-                    {
-                        Logger.Debug("Removing old persistent login for target '" + target_name + "'");
-                        try
-                        {
-                            persistent_logins[target_name].Delete();
-                        }
-                        catch (ManagementException e)
-                        {
-                            throw ManagementExceptionToInitiatorException(e);
-                        }
-                    }
+                if (String.IsNullOrEmpty(target_name))
+                    continue;
 
-                    // Log in to the target
+                // Skip this target if it is not on the list
+                if (!filtered_target_names.Contains(target_name))
+                    continue;
+
+                // Skip this target if it already has a session
+                if (targets_with_sessions.Contains(target_name))
+                    continue;
+
+                // Remove the persistent login for this target if it exists
+                if (persistent_logins.ContainsKey(target_name))
+                {
+                    Logger.Debug("Removing old persistent login for target '" + target_name + "'");
                     try
                     {
-                        LoginTargetClassHelper(target, pChapUsername, pChapSecret, pPersistent);
+                        persistent_logins[target_name].Delete();
                     }
-                    catch (InitiatorException e)
+                    catch (ManagementException e)
                     {
-                        Logger.Error("Failed to log in: " + e.Message);
-                        last_exception = e;
+                        throw ManagementExceptionToInitiatorException(e);
                     }
-                    Logger.Info("Logged in to target '" + target_name + "'");
                 }
+
+                // Log in to the target
+                Logger.Info("Logging in to target " + target_name);
+                LoginTargetClassHelper(target, ChapUsername, ChapInitSecret, ChapTargSecret, MakePersistent);
+                Logger.Debug("Logged in to target '" + target_name + "'");
+                logged_in_targets++;
             }
 
             // Wait for the system to create devices and populate the disk database
-            WaitForDiskDevices();
+            if (logged_in_targets > 0)
+                WaitForDiskDevices();
 
-            if (last_exception != null)
-            {
-                throw new InitiatorException("Could not log in to all targets");
-            }
-        }
-
-        public void LoginTargetsOnPortal(string pPortalAddress, bool pPersistent = false)
-        {
-            LoginTargetsOnPortal(pPortalAddress, null, null, pPersistent);
-        }
-
-        public void LoginTargetsOnPortal(string pPortalAddress, string pChapUsername, string pChapSecret, bool pPersistent = false)
-        {
-            if (!String.IsNullOrEmpty(pChapUsername))
-            {
-                ValidateChapUser(pChapUsername);
-            }
-
-            // Make a list of targets that are on the requested portal
-            HashSet<string> portal_target_names = new HashSet<string>();
-            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
-            foreach (ManagementObject target in target_list)
-            {
-                // There is a shortcut for this that works with the current version of MS iSCSI but it's a hack based on the string format of the DiscoveryMechanism field:
-                //if (target["DiscoveryMechanism"].ToString().Contains(pPortalAddress.ToString())) { }
-
-                // Get a list of portal groups, on each portal group get a list of portals, on each portal compare the portal address to the one we are looking for
-                var portal_groups = target["PortalGroups"] as ManagementBaseObject[];
-                foreach (var portal_group in portal_groups)
-                {
-                    var portals = portal_group["Portals"] as ManagementBaseObject[];
-                    foreach (var portal in portals)
-                    {
-                        if (portal["Address"].ToString() == pPortalAddress.ToString())
-                        {
-                            // This target is from the portal we are interested in
-                            portal_target_names.Add(target["TargetName"] as String);
-                        }
-                    }
-                }
-            }
-
-
-            // Find which targets have sessions (are logged in)
-            HashSet<string> targets_with_sessions = new HashSet<string>();
-            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-            foreach (ManagementObject session in session_list)
-            {
-                string target_name = session["TargetName"] as string;
-                if (target_name != null && !targets_with_sessions.Contains(target_name) && portal_target_names.Contains(target_name))
-                {
-                    Logger.Debug("Target " + target_name + " already has one or more sessions");
-                    targets_with_sessions.Add(target_name);
-                }
-            }
-
-
-            // Make a lookup table of already existing persistent logins
-            ManagementObjectCollection persistent_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_PersistentLoginClass");
-            Dictionary<string, ManagementObject> persistent_logins = new Dictionary<string, ManagementObject>();
-            foreach (ManagementObject login in persistent_list)
-            {
-                string target = login["TargetName"] as String;
-                persistent_logins.Add(target, login);
-            }
-
-            // Log in to each target on this portal that does not already have a session
-            foreach (ManagementObject target in target_list)
-            {
-                string target_name = target["TargetName"] as String;
-
-                // Skip this target if it is not on the requested portal
-                if (!portal_target_names.Contains(target_name))
-                    continue;
-
-                if (!String.IsNullOrEmpty(target_name) && !targets_with_sessions.Contains(target_name))
-                {
-                    // Remove the persistent login for this target if it exists
-                    if (persistent_logins.ContainsKey(target_name))
-                    {
-                        Logger.Debug("Removing old persistent login for target '" + target_name + "'");
-                        try
-                        {
-                            persistent_logins[target_name].Delete();
-                        }
-                        catch (ManagementException e)
-                        {
-                            throw ManagementExceptionToInitiatorException(e);
-                        }
-                    }
-
-                    // Log in to the target
-                    LoginTargetClassHelper(target, pChapUsername, pChapSecret, pPersistent);
-                    Logger.Info("Logged in to target '" + target_name + "'");
-                }
-            }
-
-            // Wait for the system to create devices and populate the disk database
-            WaitForDiskDevices();
-        }
-
-        public void PartitionAndFormatDisksOnPortal(string pPortalAddress, bool pRelabel = false)
-        {
-            Service vds = ConnectVdsService();
-            vds.Reenumerate();
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapOnPortal(pPortalAddress);
-            OnlineAndPackHelper(device_to_volume);
-            PartitionAndFormatHelper(device_to_volume, pRelabel);
-        }
-
-        public void MountpointDisksOnPortal(string pPortalAddress, bool pForceMountpoints = false)
-        {
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapOnPortal(pPortalAddress);
-            MountpointHelper(device_to_volume, pForceMountpoints);
+            return logged_in_targets;
         }
         
-        public void RemoveMountpointsOnPortal(string pPortalAddress)
-        {
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapOnPortal(pPortalAddress);
-            RemoveMountsHelper(device_to_volume);
-        }
-
-        public void RemoveAllMountpoints()
-        {
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapAll();
-            RemoveMountsHelper(device_to_volume);
-        }
-
-        public void UnmountDisksOnPortal(string pPortalAddress, bool pForceUnmount)
-        {
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapOnPortal(pPortalAddress);
-            UnmountHelper(device_to_volume, pForceUnmount);
-        }
-        
-        public void UnmountAllDisks(bool pForceUnmount = false)
-        {
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapAll();
-            UnmountHelper(device_to_volume, pForceUnmount);
-        }
-
-        public void OnlineAllDisks()
-        {
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapAll();
-            OnlineAndPackHelper(device_to_volume);
-        }
-
-        public void PartitionAndFormatAllDisks(bool pRelabel = false)
-        {
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapAll();
-            OnlineAndPackHelper(device_to_volume);
-            PartitionAndFormatHelper(device_to_volume, pRelabel);
-        }
-
-        public void MountpointAllDisks(bool pForceMountpoints = false)
-        {
-            Dictionary<string, string> device_to_volume = GetDeviceToVolumeMapAll();
-            MountpointHelper(device_to_volume, pForceMountpoints);
-        }
-
-        public List<DiskInfo> GetDiskInfoOnPortal(string pPortalAddress)
+        /// <summary>
+        /// Get a list of disk devices connected to the system
+        /// </summary>
+        /// <param name="PortalAddressList">Only return iSCSI disks from these portals</param>
+        /// <param name="TargetList">Only return iSCSI disks from these targets</param>
+        /// <returns></returns>
+        public List<DiskInfo> ListDiskInfo(List<string> PortalAddressList = null, List<string> TargetList = null)
         {
             Logger.Debug("Querying disk information");
-            // The list of objects to return
-            Dictionary<string, DiskInfo> disk_list = new Dictionary<string, DiskInfo>();
+            List<DiskInfo> disks_to_return = new List<DiskInfo>();
 
-            // Get the list of target objects from the initiator
-            ManagementObjectCollection target_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_TargetClass");
+            // Use to map devices to their iSCSI targets
+            List<IscsiSessionInfo> iscsi_sessions = ListIscsiSessions();
 
-            // Make a list of targets on the specified portal
-            HashSet<string> targets_to_query = new HashSet<string>();
-            foreach (ManagementObject target in target_list)
-            {
-                // This works with the current version of MS iSCSI but it's a hack based on the string format of the DiscoveryMechanism field
-                //if (target["DiscoveryMechanism"].ToString().Contains(pPortalAddress.ToString())) { }
+            // Do we need to filter out any iSCSI volumes
+            bool filter_iscsi = (PortalAddressList != null && PortalAddressList.Count > 0) || (TargetList != null && TargetList.Count > 0);
+            HashSet<string> matching_iscsi_targets = null;
+            if (filter_iscsi)
+                matching_iscsi_targets = GetFilteredTargetSet(PortalAddressList, TargetList);
 
-                // Get a list of portal groups, on each portal group get a list of portals, on each portal compare the portal address to the one we are looking for
-                var portal_groups = target["PortalGroups"] as ManagementBaseObject[];
-                foreach (var portal_group in portal_groups)
-                {
-                    var portals = portal_group["Portals"] as ManagementBaseObject[];
-                    foreach (var portal in portals)
-                    {
-                        if (portal["Address"].ToString() == pPortalAddress.ToString())
-                        {
-                            // This target is from the portal we are interested in
-                            targets_to_query.Add(target["TargetName"].ToString());
-                        }
-                    }
-                }
-            }
-
-            // Get a list of session objects from the initiator
-            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-
-            // Find the sessions that belong to targets on the specified portal and get the device that belongs to each one
-            Dictionary<string, string> device_to_volume = new Dictionary<string, string>();
-            foreach (ManagementObject session in session_list)
-            {
-                string target_name = session["TargetName"] as String;
-                string session_name = session["SessionId"] as String;
-                if (!String.IsNullOrEmpty(target_name) && targets_to_query.Contains(target_name))
-                {
-                    // This session is on the portal we are interested in
-                    ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
-                    if (device_info == null || device_info.Length <= 0)
-                    {
-                        throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
-                    }
-                    ManagementBaseObject[] connection_info = session["ConnectionInformation"] as ManagementBaseObject[];
-
-                    // We are assuming a single device per session, and a single connection per session
-
-                    // Ignore disk 0 because it is probably the system volume
-                    if ((uint)device_info[0]["DeviceNumber"] == 0)
-                        continue;
-
-                    DiskInfo disk_info = new DiskInfo();
-                    disk_info.TargetName = target_name;
-                    disk_info.DeviceNumber = (uint)device_info[0]["DeviceNumber"];
-                    disk_info.LegacyDeviceName = device_info[0]["LegacyName"] as String;
-                    disk_info.PortalAddress = connection_info[0]["TargetAddress"] as String;
-
-                    disk_list.Add(disk_info.LegacyDeviceName, disk_info);
-                }
-            }
-
-            // Assume disk == partition == volume == mount point
-            // 1:1:1:1
-            // Look for disks and the corresponding windows volumes
-            Service vds = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
-            HashSet<string> warned512e = new HashSet<string>();
-            foreach (Pack disk_pack in vds_provider.Packs)
-            {
-                string dev_name = null;
-                foreach (AdvancedDisk disk in disk_pack.Disks)
-                {
-                    dev_name = disk.Name.Replace('?', '.');
-                    if (!disk_list.ContainsKey(dev_name))
-                    {
-                        dev_name = null;
-                        break;
-                    }
-                    disk_list[dev_name].SectorSize = (int)disk.BytesPerSector;
-                    if (disk.BytesPerSector != 512 && !warned512e.Contains(dev_name))
-                    {
-                        if (Environment.OSVersion.Version.Major < 6 ||
-                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
-                        {
-                            Logger.Warn(dev_name + " is not using 512e - this can cause Windows issues.");
-                            warned512e.Add(dev_name);
-                        }
-                    }
-                    break;
-                }
-                if (dev_name == null) continue; // not a disk on the specified portal
-
-                foreach (Volume vol in disk_pack.Volumes)
-                {
-                    if (vol.AccessPaths.Count > 0)
-                        disk_list[dev_name].MountPoint = vol.AccessPaths[0];
-                    break; // assume a single volume
-                }
-            }
-            // Look for brand new volumes not in a disk pack
-            foreach (AdvancedDisk disk in vds.UnallocatedDisks)
-            {
-                string dev_name = disk.Name.Replace('?', '.');
-                if (disk_list.ContainsKey(dev_name))
-                {
-                    disk_list[dev_name].SectorSize = (int)disk.BytesPerSector;
-                    if (disk.BytesPerSector != 512 && !warned512e.Contains(dev_name))
-                    {
-                        if (Environment.OSVersion.Version.Major < 6 ||
-                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
-                        {
-                            Logger.Warn(dev_name + " is not using 512e - this can cause Windows issues.");
-                            warned512e.Add(dev_name);
-                        }
-                    }
-                }
-            }
-
-            return disk_list.Values.ToList();
-        }
-
-        public List<DiskInfo> GetAllDiskInfo()
-        {
-            Logger.Debug("Querying disk information");
-            // The list of objects to return
-            Dictionary<string, DiskInfo> disk_list = new Dictionary<string, DiskInfo>();
-            
-            // Get a list of session objects from the initiator
-            ManagementObjectCollection session_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_SessionClass");
-
-            // Find which targets have sessions (are logged in) and get their device information
-            foreach (ManagementObject session in session_list)
-            {
-                string target_name = session["TargetName"] as String;
-                string session_name = session["SessionId"] as String;
-                ManagementBaseObject[] device_info = session["Devices"] as ManagementBaseObject[]; // MSiSCSIInitiator_DeviceOnSession object
-                if (device_info == null || device_info.Length <= 0)
-                {
-                    throw new InitiatorException("Session '" + session_name + "' for target '" + target_name + "' has no devices");
-                }
-                ManagementBaseObject[] connection_info = session["ConnectionInformation"] as ManagementBaseObject[];
-
-                // We are assuming a single device per session, and a single connection per session
-
-                // Ignore disk 0 because it is probably the system volume
-                if ((uint)device_info[0]["DeviceNumber"] == 0)
-                    continue;
-
-                DiskInfo disk_info = new DiskInfo();
-                disk_info.TargetType = TargetType.iSCSI;
-                disk_info.TargetName = target_name;
-                disk_info.DeviceNumber = (uint)device_info[0]["DeviceNumber"];
-                disk_info.LegacyDeviceName = device_info[0]["LegacyName"] as String;
-                disk_info.PortalAddress = connection_info[0]["TargetAddress"] as String;
-
-                disk_list.Add(disk_info.LegacyDeviceName, disk_info);
-            }
-
-            // Assume disk == partition == volume == mount point
-            // 1:1:1:1
-            // Look for disks and the corresponding windows volumes
-            HashSet<string> warned512e = new HashSet<string>();
             Service vds = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                string dev_name = null;
+                DiskInfo disk_info = null;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    dev_name = disk.Name.Replace('?', '.');
-                    if (!disk_list.ContainsKey(dev_name))
-                    {
-                        dev_name = null;
-                        break;
-                    }
-                    disk_list[dev_name].SectorSize = (int)disk.BytesPerSector;
-                    if (disk.BytesPerSector != 512 && !warned512e.Contains(dev_name))
-                    {
-                        if (Environment.OSVersion.Version.Major < 6 ||
-                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
-                        {
-                            Logger.Warn(dev_name + " is not using 512e - this can cause Windows issues.");
-                            warned512e.Add(dev_name);
-                        }
-                    }
-                    break; // assume a single disk
+                    disk_info = VdsDiskToDiskInfo(disk, iscsi_sessions, matching_iscsi_targets);
                 }
-                if (dev_name == null) continue;
+                if (disk_info == null)
+                    continue;
 
                 foreach (Volume vol in disk_pack.Volumes)
                 {
                     if (vol.AccessPaths.Count > 0)
-                        disk_list[dev_name].MountPoint = vol.AccessPaths[0];
+                        disk_info.MountPoint = vol.AccessPaths[0];
                     break; // assume a single volume
                 }
+
+                disks_to_return.Add(disk_info);
             }
-            // Look for brand new volumes not yet in a disk pack
             foreach (AdvancedDisk disk in vds.UnallocatedDisks)
             {
-                string dev_name = disk.Name.Replace('?', '.');
-                if (disk_list.ContainsKey(dev_name))
+                DiskInfo disk_info = VdsDiskToDiskInfo(disk, iscsi_sessions, matching_iscsi_targets);
+                if (disk_info != null)
                 {
-                    disk_list[dev_name].SectorSize = (int)disk.BytesPerSector;
-                    if (disk.BytesPerSector != 512 && !warned512e.Contains(dev_name))
-                    {
-                        if (Environment.OSVersion.Version.Major < 6 ||
-                            Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor < 2)
-                        {
-                            Logger.Warn(dev_name + " is not using 512e - this can cause Windows issues.");
-                            warned512e.Add(dev_name);
-                        }
-                    }
+                    disks_to_return.Add(disk_info);
                 }
             }
 
-            return disk_list.Values.ToList();
+            disks_to_return.Sort((x, y) => x.DeviceNumber.CompareTo(y.DeviceNumber));
+            return disks_to_return;
         }
 
+        /// <summary>
+        /// Map a VDS disk object to a DiskInfo object.  Returns null of the disk is a system volume, or (optionally) doesn't match the list of targets passed in
+        /// </summary>
+        /// <param name="VdsDisk">The VDS disk</param>
+        /// <param name="IscsiSessions">The list of current iSCSI sessions</param>
+        /// <param name="MatchIscsiTargets">Only return a value if the disk is from a session in this list</param>
+        /// <returns></returns>
+        private DiskInfo VdsDiskToDiskInfo(Disk VdsDisk, List<IscsiSessionInfo> IscsiSessions, HashSet<string> MatchIscsiTargets = null)
+        {
+            bool filter_iscsi = MatchIscsiTargets != null && MatchIscsiTargets.Count > 0;
+
+            // Skip this disk if it is not iSCSI and we are only looking for iSCSI disks
+            if (filter_iscsi && VdsDisk.BusType != StorageBusType.Iscsi)
+                return null;
+
+            string dev_name = VdsDisk.Name.Replace("?", ".");
+            uint dev_number = 0;
+            Match m = Regex.Match(dev_name, @"(\d+)$");
+            if (m.Success)
+            {
+                dev_number = uint.Parse(m.Groups[1].Value);
+            }
+
+            // Skip disk 0 because it is probably the system volume
+            if (dev_number == 0)
+                return null;
+
+            // If this is an iSCSI disk, make sure it matches the filters passed in
+            string target = null;
+            string portal = null;
+            if (VdsDisk.BusType == StorageBusType.Iscsi)
+            {
+                IscsiSessionInfo sess = (from s in IscsiSessions where s.LegacyDeviceName == dev_name select s).First();
+                if (filter_iscsi && !MatchIscsiTargets.Contains(sess.TargetIqn))
+                    return null;
+
+                target = sess.TargetIqn;
+                portal = sess.TargetAddress;
+            }
+
+            DiskInfo disk_info = new DiskInfo();
+            disk_info.DevicePath = VdsDisk.DevicePath;
+            disk_info.LegacyDeviceName = dev_name;
+            disk_info.DeviceNumber = dev_number;
+            disk_info.IscsiTargetName = target;
+            disk_info.IscsiPortalAddress = portal;
+            disk_info.SectorSize = VdsDisk.BytesPerSector;
+            disk_info.Size = VdsDisk.Size;
+            disk_info.Online = VdsDisk.Status == DiskStatus.Online;
+            disk_info.Readonly = (VdsDisk.Flags & DiskFlags.ReadOnly) == DiskFlags.ReadOnly;
+            if (VdsDisk.BusType == StorageBusType.Iscsi)
+            {
+                disk_info.TargetType = TargetType.iSCSI.ToString();
+            }
+            else if (VdsDisk.BusType == StorageBusType.Fibre)
+            {
+                disk_info.TargetType = TargetType.FibreChannel.ToString();
+            }
+            else
+            {
+                disk_info.TargetType = VdsDisk.BusType.ToString();
+            }
+            m = Regex.Match(VdsDisk.DiskAddress, @"Port(\d+)Path(\d+)Target(\d+)Lun(\d+)");
+            if (m.Success)
+            {
+                disk_info.Port = uint.Parse(m.Groups[1].Value);
+                disk_info.Path = uint.Parse(m.Groups[2].Value);
+                disk_info.Target = uint.Parse(m.Groups[3].Value);
+                disk_info.Lun = uint.Parse(m.Groups[4].Value);
+            }
+
+            return disk_info;
+        }
+        
+        /// <summary>
+        /// Get the current iSCSI initiator IQN name
+        /// </summary>
+        /// <returns></returns>
         public string GetIscsiInitiatorName()
         {
             string node_name = "";
@@ -3018,45 +3001,51 @@ namespace windiskhelper
             return node_name;
         }
 
-        public void SetIscsiInitiatorName(string pInitiatorName)
+        /// <summary>
+        /// Set the iSCSI initiator IQN name
+        /// </summary>
+        /// <param name="NewInitiatorName">The new initiator name. Set to null to use the default name</param>
+        public void SetIscsiInitiatorName(string NewInitiatorName = null)
         {
-            ManagementObjectCollection init_list = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_MethodClass");
-            foreach (ManagementObject init in init_list)
+            ManagementObject init_methods = DoWmiQuery("SELECT * FROM MSiSCSIInitiator_MethodClass").Cast<ManagementObject>().First();
+            ManagementBaseObject input_params = init_methods.GetMethodParameters("SetIscsiInitiatorNodeName");
+            input_params["InitiatorNodeName"] = NewInitiatorName;
+            try
             {
-                ManagementBaseObject input_params = init.GetMethodParameters("SetIscsiInitiatorNodeName");
-                input_params["InitiatorNodeName"] = pInitiatorName;
-                try
-                {
-                    init.InvokeMethod("SetIscsiInitiatorNodeName", input_params, null);
-                }
-                catch (ManagementException e)
-                {
-                    throw ManagementExceptionToInitiatorException(e);
-                }
-                break;
+                init_methods.InvokeMethod("SetIscsiInitiatorNodeName", input_params, null);
+            }
+            catch (ManagementException e)
+            {
+                throw ManagementExceptionToInitiatorException(e);
             }
         }
 
-
-
-
-        public List<string> GetWWPNs()
+        /// <summary>
+        /// Get a list of the WWPNs from FC HBAs on this system
+        /// </summary>
+        /// <returns></returns>
+        public List<string> ListWwpns()
         {
             List<string> wwns = new List<string>();
             ManagementObjectCollection adapter_list = DoWmiQuery("SELECT * FROM MSFC_FibrePortHBAAttributes");
             foreach (var adapter in adapter_list)
             {
                 ManagementBaseObject attributes = adapter["Attributes"] as ManagementBaseObject;
-                wwns.Add(String.Join(":", (attributes["PortWWN"] as byte[]).Select(obj => String.Format("{0:X2}", obj).ToLower()).ToArray()));
+                wwns.Add(String.Join(":", (attributes["PortWWN"] as byte[]).Select(x => String.Format("{0:X2}", x).ToLower()).ToArray()));
             }
             return wwns;
         }
 
-        public List<FcHbaInfo> GetFcHbaInfo()
+        /// <summary>
+        /// Get a list of installed FC HBAs and details about them
+        /// </summary>
+        /// <returns></returns>
+        public List<FcHbaInfo> ListFcHbaInfo()
         {
             List<FcHbaInfo> hbas = new List<FcHbaInfo>();
             ManagementObjectCollection adapter_list = DoWmiQuery("SELECT * FROM MSFC_FCAdapterHBAAttributes");
             ManagementObjectCollection port_list = DoWmiQuery("SELECT * FROM MSFC_FibrePortHBAAttributes");
+            ManagementObjectCollection adapter_methods_list = DoWmiQuery("SELECT * FROM MSFC_HBAFCPInfo");
             foreach (var adapter in adapter_list)
             {
                 FcHbaInfo h = new FcHbaInfo();
@@ -3076,6 +3065,58 @@ namespace windiskhelper
                         //h.Speed = Enum.GetName(typeof(HBA_PORTSPEED), (UInt32)attributes["PortSpeed"]);
                         h.Speed = ((HBA_PORTSPEED)(UInt32)attributes["PortSpeed"]).GetDescription();
 
+                        //Console.WriteLine("HBA port " + h.WWPN);
+
+                        // Make a list of connected targets
+                        byte[] wwn_array = attributes["PortWWN"] as byte[];
+                        ManagementObject adapter_methods = null;
+                        foreach (ManagementObject a in adapter_methods_list)
+                        {
+                            if (a["InstanceName"].ToString() == port["InstanceName"].ToString())
+                            {
+                                adapter_methods = a;
+                                break;
+                            }
+                        }
+                        HashSet<string> target_wwpns = new HashSet<string>();
+                        HashSet<UInt32> lun_numbers = new HashSet<uint>();
+                        int lun_paths = 0;
+                        ManagementBaseObject in_params = adapter_methods.GetMethodParameters("GetFcpTargetMapping");
+                        in_params["HbaPortWWN"] = wwn_array;
+                        in_params["InEntryCount"] = 10;
+                        ManagementBaseObject out_params = null;
+                        try
+                        {
+                            out_params = adapter_methods.InvokeMethod("GetFcpTargetMapping", in_params, new InvokeMethodOptions());
+                        }
+                        catch (ManagementException e)
+                        {
+                            throw ManagementExceptionToInitiatorException(e);
+                        }
+                        ManagementBaseObject[] entry_list = out_params["Entry"] as ManagementBaseObject[];
+                        if (entry_list != null)
+                        {
+                            foreach (ManagementBaseObject entry in entry_list)
+                            {
+                                var fcp_info = entry["FCPId"] as ManagementBaseObject;
+                                string wwpn = String.Join(":", (fcp_info["PortWWN"] as byte[]).Select(obj => String.Format("{0:X2}", obj).ToLower()).ToArray());
+                                target_wwpns.Add(wwpn);
+                                //Console.WriteLine("Fcid: " + String.Format("{0:X}", (UInt32)fcp_info["Fcid"]));
+                                //Console.WriteLine("FcpLun: " + String.Format("{0}", (UInt64)fcp_info["FcpLun"]));
+
+                                var scsi_info = entry["ScsiID"] as ManagementBaseObject;
+                                //Console.WriteLine("  ScsiBusNumber: " + (UInt32)scsi_info["ScsiBusNumber"]);
+                                //Console.WriteLine("  ScsiTargetNumber: " + (UInt32)scsi_info["ScsiTargetNumber"]);
+                                //Console.WriteLine("  ScsiOSLun: " + (UInt32)scsi_info["ScsiOSLun"]);
+                                lun_numbers.Add((UInt32)scsi_info["ScsiOSLun"]);
+                                lun_paths++;
+                            }
+                        }
+                        h.TargetWWPNs = target_wwpns.ToList();
+                        h.UniqueLunCount = lun_numbers.Count;
+                        h.TotalLunPathCount = lun_paths;
+
+                        //byte[] wwn_data = (((out_params["Entry"] as ManagementBaseObject[])[0]["FCPId"] as ManagementBaseObject)["PortWWN"] as byte[]);
                     }
                 }
                 hbas.Add(h);
@@ -3083,6 +3124,376 @@ namespace windiskhelper
             return hbas;
         }
 
+        /// <summary>
+        /// Determine if MPIO is installed on the system
+        /// </summary>
+        /// <returns></returns>
+        private bool MpioWmiInstalled()
+        {
+            try
+            {
+                DoWmiQuery("SELECT * FROM MPIO_REGISTERED_DSM");
+                return true;
+            }
+            catch (InitiatorException e)
+            {
+                if (e.Message == "InvalidClass")
+                {
+                    return false;
+                }
+                else
+                {
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Determine if there are any MPIO devices present on the system
+        /// </summary>
+        /// <returns></returns>
+        private bool MpioDevicesPresent()
+        {
+            try
+            {
+                DoWmiQuery("SELECT * FROM DSM_LB_Operations");
+                return true;
+            }
+            catch (InitiatorException e)
+            {
+                if (e.Message == "InvalidClass")
+                {
+                    // there are no MPIO devices
+                    return false;
+                }
+                else
+                {
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Set the specified load balance policy on all MPIO volumes
+        /// </summary>
+        /// <param name="NewPolicy">The policy to set</param>
+        /// <param name="DeviceList">Only operate on these devices</param>
+        public void SetMpioLoadBalancePolicy(DSM_LB_POLICY NewPolicy, List<string> DeviceList = null)
+        {
+            if (!MpioWmiInstalled())
+            {
+                throw new InitiatorException("MPIO is not installed");
+            }
+            if (!MpioDevicesPresent())
+            {
+                throw new InitiatorException("There are no MPIO devices");
+            }
+
+            Logger.Info("Setting load balancing policy to '" + NewPolicy + "'");
+
+            bool device_filter = DeviceList != null && DeviceList.Count > 0;
+            List<string> filtered_instances = new List<string>();
+            if (device_filter)
+            {
+                filtered_instances = (from d in ListMpioDiskInfo() where DeviceList.Contains(d.LegacyDeviceName) select d.InstanceName).ToList();
+            }
+
+            ManagementObjectCollection dsm_ops_list = DoWmiQuery("SELECT * FROM DSM_LB_Operations");;
+            ManagementObjectCollection dsm_disk_list = DoWmiQuery("SELECT * FROM DSM_QueryLBPolicy_V2");
+
+            foreach (ManagementObject dsm_op in dsm_ops_list)
+            {
+                string op_instance = dsm_op["InstanceName"] as String;
+                if (device_filter && !filtered_instances.Contains(op_instance))
+                    continue;
+
+                Logger.Debug("Setting LB policy on " + op_instance);
+
+                ManagementObject lb_policy = InstantiateWmiClass(@"root\wmi", "DSM_Load_Balance_Policy_V2");
+                lb_policy["Version"] = 2;
+                lb_policy["Reserved"] = 0;
+                lb_policy["LoadBalancePolicy"] = (UInt32)NewPolicy;
+                foreach (ManagementBaseObject dsm_disk in dsm_disk_list)
+                {
+                    if (dsm_disk["InstanceName"] as String == op_instance)
+                    {
+                        ManagementBaseObject existing_lb_policy = dsm_disk["LoadBalancePolicy"] as ManagementBaseObject;
+                        lb_policy["DSM_Paths"] = existing_lb_policy["DSM_Paths"] as ManagementBaseObject[];
+                        lb_policy["DSMPathCount"] = (UInt32)existing_lb_policy["DSMPathCount"];
+                        break;
+                    }
+                }
+
+                ManagementBaseObject in_params = dsm_op.GetMethodParameters("DsmSetLoadBalancePolicy");
+                in_params["LoadBalancePolicy"] = lb_policy;
+                try
+                {
+                    dsm_op.InvokeMethod("DsmSetLoadBalancePolicy", in_params, new InvokeMethodOptions());
+                }
+                catch (ManagementException e)
+                {
+                    throw ManagementExceptionToInitiatorException(e);
+                }
+
+            }
+        }
+
+        /// <summary>
+        /// Get a list of the load balance policy names on this system
+        /// </summary>
+        /// <returns></returns>
+        public List<string> ListMpioLoadBalancePolicies()
+        {
+            return (from v in Enum.GetValues(typeof(DSM_LB_POLICY)).Cast<DSM_LB_POLICY>() select v.GetDescription()).ToList();
+        }
+
+        /// <summary>
+        /// Get a list of all disks and their path info
+        /// </summary>
+        /// <returns></returns>
+        public List<MpioDiskInfo> ListMpioDiskInfo()
+        {
+            // Get the basic disk info
+            List<DiskInfo> simple_disk_list = ListDiskInfo();
+
+            List<MpioDiskInfo> disks_to_return = new List<MpioDiskInfo>();
+            foreach (var d in simple_disk_list)
+                disks_to_return.Add(new MpioDiskInfo(d));
+
+            if (!MpioWmiInstalled())
+            {
+                return disks_to_return;
+            }
+            if (!MpioDevicesPresent())
+            {
+                return disks_to_return;
+            }
+
+            ManagementObjectCollection dsm_disk_list = DoWmiQuery("SELECT * FROM DSM_QueryLBPolicy_V2");
+            Dictionary<string, ManagementBaseObject> dsm_disks = new Dictionary<string, ManagementBaseObject>();
+            foreach (var disk in dsm_disk_list)
+            {
+                string instance_name = disk["InstanceName"] as String;
+                dsm_disks.Add(instance_name, disk);
+            }
+
+            foreach (MpioDiskInfo mpio_disk_info in disks_to_return)
+            {
+                string dev_path = mpio_disk_info.DevicePath.Substring(4).Replace("#", @"\").ToLower().Substring(0, 105);
+                string instance_name = (from k in dsm_disks.Keys where k.ToLower().StartsWith(dev_path) select k).First();
+                var wmi_dsm_disk = dsm_disks[instance_name];
+
+                mpio_disk_info.InstanceName = instance_name;
+                var policy = wmi_dsm_disk["LoadBalancePolicy"] as ManagementBaseObject;
+                mpio_disk_info.LoadBalancePolicy = ((DSM_LB_POLICY)(UInt32)policy["LoadBalancePolicy"]).GetDescription();
+                var path_list = policy["DSM_Paths"] as ManagementBaseObject[];
+                int failed_path_count = 0;
+                foreach (var path in path_list)
+                {
+                    MpioPathInfo new_path = new MpioPathInfo();
+                    new_path.ALUASupport = (UInt32)path["ALUASupport"];
+                    new_path.DsmPathId = (UInt64)path["DsmPathId"];
+                    new_path.FailedPath = (UInt32)path["FailedPath"];
+                    new_path.OptimizedPath = (UInt32)path["OptimizedPath"];
+                    new_path.PathWeight = (UInt32)path["PathWeight"];
+                    new_path.PreferredPath = (UInt32)path["PreferredPath"];
+                    new_path.PrimaryPath = (UInt32)path["PrimaryPath"];
+                    new_path.Reserved = (UInt64)path["Reserved"];
+                    if ((byte)path["SymmetricLUA"] == 0)
+                        new_path.SymmetricLUA = false;
+                    else
+                        new_path.SymmetricLUA = true;
+                    new_path.TargetPortGroup_Identifier = (UInt16)path["TargetPortGroup_Identifier"];
+                    if ((byte)path["TargetPortGroup_Preferred"] == 0)
+                        new_path.TargetPortGroup_Preferred = false;
+                    else
+                        new_path.TargetPortGroup_Preferred = true;
+                    new_path.TargetPortGroup_State = ((TargetPortGroup_State)(UInt32)path["TargetPortGroup_State"]).GetDescription();
+
+                    mpio_disk_info.DSM_Paths.Add(new_path);
+                    if (new_path.FailedPath > 0)
+                        failed_path_count++;
+                }
+                mpio_disk_info.FailedPathCount = failed_path_count;
+            }
+
+            ManagementObjectCollection mpio_list = DoWmiQuery("SELECT * FROM MPIO_GET_DESCRIPTOR");
+            foreach (var disk in mpio_list)
+            {
+                string instance_name = disk["InstanceName"] as String;
+                var mpio_disk = (from d in disks_to_return where d.InstanceName == instance_name select d).First();
+                mpio_disk.DeviceName = disk["DeviceName"] as String;
+                var pdo_list = disk["PdoInformation"] as ManagementBaseObject[];
+                foreach (var pdo_wmi in pdo_list)
+                {
+                    UInt64 path_id = (UInt64)pdo_wmi["PathIdentifier"];
+                    var scsi_addr = pdo_wmi["ScsiAddress"] as ManagementBaseObject;
+                    var path = (from p in mpio_disk.DSM_Paths where p.DsmPathId == path_id select p).First();
+                    path.Lun = (byte)scsi_addr["Lun"];
+                    path.PortNumber = (byte)scsi_addr["PortNumber"];
+                    path.ScsiPathId = (byte)scsi_addr["ScsiPathId"];
+                    path.TargetId = (byte)scsi_addr["TargetId"];
+                }
+            }
+
+            ManagementObjectCollection dsm_lb_list = DoWmiQuery("SELECT * FROM DSM_QuerySupportedLBPolicies_V2");
+            foreach (var lb_policies in dsm_lb_list)
+            {
+                string instance_name = lb_policies["InstanceName"] as String;
+                var mpio_disk = (from d in disks_to_return where d.InstanceName == instance_name select d).First();
+                var policy_list = lb_policies["Supported_LB_Policies"] as ManagementBaseObject[];
+                foreach (var policy in policy_list)
+                {
+                    mpio_disk.Supported_LB_Policies.Add(((DSM_LB_POLICY)(UInt32)policy["LoadBalancePolicy"]).GetDescription());
+                }
+            }
+
+            disks_to_return.Sort((x, y) => x.DeviceNumber.CompareTo(y.DeviceNumber));
+            return disks_to_return;
+        }
+
+        /// <summary>
+        /// Enable the MPIO feature, and add a device string to the MS DSM
+        /// The return value indicates if a reboot is required
+        /// </summary>
+        /// <returns></returns>
+        public bool EnableMpio(string pDeviceString)
+        {
+            Logger.Info("Enabling MPIO for device string " + pDeviceString);
+            bool reboot_required = false;
+
+            //
+            // Make sure the MPIO feature is turned on
+            //
+
+            // Get the current list of features and see if MPIO is enabled
+            string cmd = "dism.exe /online /get-features";
+            ProcessResult res = RunCommand(cmd);
+            if (res.ExitCode != 0)
+            {
+                throw new InitiatorException("Failed to query MPIO feature - " + res.Stdout + res.Stderr);
+            }
+            bool mpio_enabled = false;
+            string curr_feature = "";
+            foreach (string line in Regex.Split(res.Stdout, "\n"))
+            {
+                string l = line.Trim();
+                if (l.Length <= 0)
+                    continue;
+
+                var m = Regex.Match(l, @"Feature Name : (\S+)");
+                if (m.Success)
+                {
+                    curr_feature = m.Groups[1].Value;
+                    continue;
+                }
+                m = Regex.Match(l, @"State : (\S+)");
+                if (m.Success && curr_feature == "MultipathIo")
+                {
+                    if (m.Groups[1].Value.ToLower() == "enabled")
+                        mpio_enabled = true;
+                    else
+                        mpio_enabled = false;
+                }
+            }
+
+            // Enable MPIO if it isn't already
+            if (!mpio_enabled)
+            {
+                reboot_required = true;
+                cmd = "dism.exe /online /enable-feature /featurename:MultipathIo /norestart";
+                res = RunCommand(cmd);
+                if (res.ExitCode != 0)
+                {
+                    throw new InitiatorException("Failed to install MPIO feature - " + res.Stdout + res.Stderr);
+                }
+            }
+
+            //
+            // Make sure the devices are added to the MS DSM
+            //
+            bool registered = false;
+
+            // Check if the device string is already claimed by MPIO
+            cmd = "mpclaim.exe -h";
+            res = RunCommand(cmd);
+            if (res.ExitCode != 0)
+            {
+                throw new InitiatorException("Failed to query for device string - " + res.Stdout + res.Stderr);
+            }
+            foreach (string line in Regex.Split(res.Stdout, "\n"))
+            {
+                if (line.Contains(pDeviceString))
+                {
+                    registered = true;
+                    break;
+                }
+            }
+
+            // Add the device string to MPIO/MS DSM if it isn't already
+            if (!registered)
+            {
+                reboot_required = true;
+                cmd = "mpclaim.exe -n -i -d \"" + pDeviceString + "\"";
+                res = RunCommand(cmd);
+                if (res.ExitCode != 0)
+                {
+                    throw new InitiatorException("Failed to register device string - " + res.Stdout + res.Stderr);
+                }
+            }
+
+            // Make sure the MPIO WMI classes are present
+            if (!MpioWmiInstalled())
+                reboot_required = true;
+
+            return reboot_required;
+        }
+
+        /// <summary>
+        /// Remove the a device string from the MS DSM
+        /// The return value indicates if a reboot is required
+        /// </summary>
+        /// <returns></returns>
+        public bool DisableMpio(string pDeviceString)
+        {
+            Logger.Info("Disabling MPIO for device string " + pDeviceString);
+            bool reboot_required = false;
+
+            //
+            // Make sure the devices are added to the MS DSM
+            //
+            bool registered = false;
+
+            // Check if the device string is claimed by MPIO
+            string cmd = "mpclaim.exe -h";
+            ProcessResult res = RunCommand(cmd);
+            if (res.ExitCode != 0)
+            {
+                throw new InitiatorException("Failed to query for device string - " + res.Stdout + res.Stderr);
+            }
+            foreach (string line in Regex.Split(res.Stdout, "\n"))
+            {
+                if (line.Contains(pDeviceString))
+                {
+                    registered = true;
+                    break;
+                }
+            }
+
+            // Remove the device string from MPIO/MS DSM if it isn't already
+            if (registered)
+            {
+                reboot_required = true;
+                cmd = "mpclaim.exe -n -u -d \"" + pDeviceString + "\"";
+                res = RunCommand(cmd);
+                if (res.ExitCode != 0)
+                {
+                    throw new InitiatorException("Failed to unregister device string - " + res.Stdout + res.Stderr);
+                }
+            }
+
+            return reboot_required;
+        }
 
     
     }

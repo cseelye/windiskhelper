@@ -14,6 +14,8 @@ namespace windiskhelper
         private const string LOG_PATTERN = "%date{yyy-MM-dd HH:mm:ss,fff}: %-6level %message%newline";
         private static ILog m_Log;
 
+        public static bool BatchMode = false;
+
         static Logger()
         {
             InitLog();
@@ -30,6 +32,7 @@ namespace windiskhelper
 
             // ColoredConsoleAppender - write to console with severity-colored messages
             ColoredConsoleAppender cca = new ColoredConsoleAppender();
+            cca.Target = "Console.Error";
             cca.Name = "ConsoleLogger";
             cca.Layout = patternLayout;
 
@@ -78,12 +81,18 @@ namespace windiskhelper
 
         public static void EnableBatchMode()
         {
-            // Add a filter to only show ERROR and above on the console
+            //// Add a filter to only show ERROR and above on the console
+            //Hierarchy hierarchy = LogManager.GetRepository() as Hierarchy;
+            //ColoredConsoleAppender console = hierarchy.Root.GetAppender("ConsoleLogger") as ColoredConsoleAppender;
+            //var filter = new log4net.Filter.LevelRangeFilter();
+            //filter.LevelMin = Level.Error;
+            //console.AddFilter(filter);
+
+            // Turn off console logging completely by removing that appender
             Hierarchy hierarchy = LogManager.GetRepository() as Hierarchy;
-            var console = hierarchy.Root.GetAppender("ConsoleLogger") as ColoredConsoleAppender;
-            var filter = new log4net.Filter.LevelRangeFilter();
-            filter.LevelMin = Level.Error;
-            console.AddFilter(filter);
+            hierarchy.Root.RemoveAppender("ConsoleLogger");
+
+            BatchMode = true;
         }
 
         public static void EnableConsoleDebug()
