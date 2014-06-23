@@ -1755,7 +1755,7 @@ namespace windiskhelper
                         skip = true;
                         break;
                     }
-                    
+
                     if (vol.IsMounted)
                     {
                         Logger.Debug("Unmounting volume " + vol.Label + " (disk " + dev_name + ")");
