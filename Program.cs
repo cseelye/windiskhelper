@@ -1307,6 +1307,7 @@ namespace windiskhelper
                 "login_targets",
                 "logout_targets",
                 "list_disks",
+                "rescan_disks",
                 "online_disks",
                 "setup_disks",
                 "format_disks",
