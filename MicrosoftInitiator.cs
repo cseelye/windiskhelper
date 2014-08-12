@@ -3198,18 +3198,25 @@ namespace windiskhelper
                 filtered_instances = (from d in ListMpioDiskInfo() where DeviceList.Contains(d.LegacyDeviceName) select d.InstanceName).ToList();
             }
 
-            ManagementObjectCollection dsm_ops_list = DoWmiQuery("SELECT * FROM DSM_LB_Operations");;
+            ManagementObjectCollection dsm_ops_list = DoWmiQuery("SELECT * FROM DSM_LB_Operations");
             ManagementObjectCollection dsm_disk_list = DoWmiQuery("SELECT * FROM DSM_QueryLBPolicy_V2");
+            UInt32 path_count = 4;
+            foreach (var d in dsm_disk_list)
+            {
+                path_count = (UInt32)((ManagementBaseObject)d["LoadBalancePolicy"])["DSMPathCount"];
+                break;
+            }
 
+            int path_to_prefer = 0;
             foreach (ManagementObject dsm_op in dsm_ops_list)
             {
                 string op_instance = dsm_op["InstanceName"] as String;
                 if (device_filter && !filtered_instances.Contains(op_instance))
                     continue;
 
-                Logger.Debug("Setting LB policy on " + op_instance);
+                Logger.Debug("Setting LB policy on " + op_instance + " to " + (UInt32)NewPolicy);
 
-                ManagementObject lb_policy = InstantiateWmiClass(@"root\wmi", "DSM_Load_Balance_Policy_V2");
+                ManagementBaseObject lb_policy = InstantiateWmiClass(@"root\wmi", "DSM_Load_Balance_Policy_V2");
                 lb_policy["Version"] = 2;
                 lb_policy["Reserved"] = 0;
                 lb_policy["LoadBalancePolicy"] = (UInt32)NewPolicy;
@@ -3218,7 +3225,29 @@ namespace windiskhelper
                     if (dsm_disk["InstanceName"] as String == op_instance)
                     {
                         ManagementBaseObject existing_lb_policy = dsm_disk["LoadBalancePolicy"] as ManagementBaseObject;
-                        lb_policy["DSM_Paths"] = existing_lb_policy["DSM_Paths"] as ManagementBaseObject[];
+
+                        // Set the path flags.  All paths are marked as optimized and preferred for failback
+                        // For the Failover LB policy, the first path is marked as primary and all others marked as standby
+                        // For all other LB policies, all paths are marked as primary
+
+                        ManagementBaseObject[] path_list = existing_lb_policy["DSM_Paths"] as ManagementBaseObject[];
+                        for (int i = 0; i < path_list.Count(); i++)
+                        {
+                            path_list[i]["PreferredPath"] = 1;
+                            path_list[i]["OptimizedPath"] = 1;
+                            //if (NewPolicy == DSM_LB_POLICY.DSM_LB_FAILOVER && i > 0)
+                            if (NewPolicy == DSM_LB_POLICY.DSM_LB_FAILOVER && i != path_to_prefer)
+                            {
+                                Logger.Debug("Setting path " + path_list[i]["DsmPathId"] + " to standby");
+                                path_list[i]["PrimaryPath"] = 0;
+                            }
+                            else
+                            {
+                                Logger.Debug("Setting path " + path_list[i]["DsmPathId"] + " to primary");
+                                path_list[i]["PrimaryPath"] = 1;
+                            }
+                        }
+                        lb_policy["DSM_Paths"] = path_list;
                         lb_policy["DSMPathCount"] = (UInt32)existing_lb_policy["DSMPathCount"];
                         break;
                     }
@@ -3234,7 +3263,9 @@ namespace windiskhelper
                 {
                     throw ManagementExceptionToInitiatorException(e);
                 }
-
+                path_to_prefer++;
+                if (path_to_prefer >= path_count)
+                    path_to_prefer = 0;
             }
         }
 
@@ -3279,7 +3310,8 @@ namespace windiskhelper
 
             foreach (MpioDiskInfo mpio_disk_info in disks_to_return)
             {
-                string dev_path = mpio_disk_info.DevicePath.Substring(4).Replace("#", @"\").ToLower().Substring(0, 105);
+                string dev_path = mpio_disk_info.DevicePath.Substring(4).Replace("#", @"\").ToLower();
+                dev_path = dev_path.Substring(0, dev_path.IndexOf('{') - 1);
                 string instance_name = (from k in dsm_disks.Keys where k.ToLower().StartsWith(dev_path) select k).First();
                 var wmi_dsm_disk = dsm_disks[instance_name];
 
@@ -3321,18 +3353,23 @@ namespace windiskhelper
             foreach (var disk in mpio_list)
             {
                 string instance_name = disk["InstanceName"] as String;
-                var mpio_disk = (from d in disks_to_return where d.InstanceName == instance_name select d).First();
-                mpio_disk.DeviceName = disk["DeviceName"] as String;
-                var pdo_list = disk["PdoInformation"] as ManagementBaseObject[];
-                foreach (var pdo_wmi in pdo_list)
+                var mpio_disk_matches = (from d in disks_to_return where d.InstanceName == instance_name select d);
+
+                if (mpio_disk_matches.Count() > 0)
                 {
-                    UInt64 path_id = (UInt64)pdo_wmi["PathIdentifier"];
-                    var scsi_addr = pdo_wmi["ScsiAddress"] as ManagementBaseObject;
-                    var path = (from p in mpio_disk.DSM_Paths where p.DsmPathId == path_id select p).First();
-                    path.Lun = (byte)scsi_addr["Lun"];
-                    path.PortNumber = (byte)scsi_addr["PortNumber"];
-                    path.ScsiPathId = (byte)scsi_addr["ScsiPathId"];
-                    path.TargetId = (byte)scsi_addr["TargetId"];
+                    var mpio_disk = mpio_disk_matches.First();
+                    mpio_disk.DeviceName = disk["DeviceName"] as String;
+                    var pdo_list = disk["PdoInformation"] as ManagementBaseObject[];
+                    foreach (var pdo_wmi in pdo_list)
+                    {
+                        UInt64 path_id = (UInt64)pdo_wmi["PathIdentifier"];
+                        var scsi_addr = pdo_wmi["ScsiAddress"] as ManagementBaseObject;
+                        var path = (from p in mpio_disk.DSM_Paths where p.DsmPathId == path_id select p).First();
+                        path.Lun = (byte)scsi_addr["Lun"];
+                        path.PortNumber = (byte)scsi_addr["PortNumber"];
+                        path.ScsiPathId = (byte)scsi_addr["ScsiPathId"];
+                        path.TargetId = (byte)scsi_addr["TargetId"];
+                    }
                 }
             }
 
@@ -3340,11 +3377,15 @@ namespace windiskhelper
             foreach (var lb_policies in dsm_lb_list)
             {
                 string instance_name = lb_policies["InstanceName"] as String;
-                var mpio_disk = (from d in disks_to_return where d.InstanceName == instance_name select d).First();
-                var policy_list = lb_policies["Supported_LB_Policies"] as ManagementBaseObject[];
-                foreach (var policy in policy_list)
+                var mpio_disk_matches = (from d in disks_to_return where d.InstanceName == instance_name select d);
+                if (mpio_disk_matches.Count() > 0)
                 {
-                    mpio_disk.Supported_LB_Policies.Add(((DSM_LB_POLICY)(UInt32)policy["LoadBalancePolicy"]).GetDescription());
+                    var mpio_disk = mpio_disk_matches.First();
+                    var policy_list = lb_policies["Supported_LB_Policies"] as ManagementBaseObject[];
+                    foreach (var policy in policy_list)
+                    {
+                        mpio_disk.Supported_LB_Policies.Add(((DSM_LB_POLICY)(UInt32)policy["LoadBalancePolicy"]).GetDescription());
+                    }
                 }
             }
 
