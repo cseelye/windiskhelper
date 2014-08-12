@@ -612,6 +612,22 @@ namespace windiskhelper
                 if (json)
                     Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(disk_list, Newtonsoft.Json.Formatting.Indented));
             }
+            else if (Args["rescan_disks"] != null)
+            {
+                Logger.Info("Rescanning disks/paths...");
+                try
+                {
+                    msinit.RescanDisks();
+                }
+                catch (MicrosoftInitiator.InitiatorException e)
+                {
+                    Logger.Error("Rescanning disks failed: " + e.Message);
+                    LogExceptionDetail(e);
+                    if (batch || json)
+                        Console.Error.WriteLine("Rescanning disks failed: " + e.Message);
+                    Environment.Exit(EXIT_FAIL);
+                }
+            }
             else if (Args["online_disks"] != null)
             {
                 string statement = "Online/signature";
@@ -1095,7 +1111,33 @@ namespace windiskhelper
                 if (json)
                     Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(lb_policies, Newtonsoft.Json.Formatting.Indented));
             }
-            
+            else if (Args["vdbench_devices"] != null)
+            {
+                string host_number = "1";
+                if (Args["vdbench_host"] != null)
+                    host_number = Args["vdbench_host"];
+
+                List<MicrosoftInitiator.DiskInfo> disk_list = new List<MicrosoftInitiator.DiskInfo>();
+                try
+                {
+                    disk_list = msinit.ListDiskInfo(PortalAddressList: arg_portal_list);
+                }
+                catch (MicrosoftInitiator.InitiatorException e)
+                {
+                    Logger.Error("Listing disks failed: " + e.Message);
+                    LogExceptionDetail(e);
+                    if (batch || json)
+                        Console.Error.WriteLine("Listing disks failed: " + e.Message);
+                    Environment.Exit(EXIT_FAIL);
+                }
+
+                int disk_index = 1;
+                foreach (MicrosoftInitiator.DiskInfo disk in disk_list)
+                {
+                    Console.WriteLine("sd=sd" + host_number + "_" + disk_index + ",host=hd" + host_number + ",lun=" + disk.LegacyDeviceName + ",openflags=directio,size=" + disk.Size);
+                    disk_index++;
+                }
+            }
 
             Environment.Exit(EXIT_SUCCESS);
         }
@@ -1209,6 +1251,8 @@ namespace windiskhelper
             Console.WriteLine("                        connected disk devices on the system");
             Console.WriteLine("  --dump_vds_prov_info  Print out as much information as possible about the VDS");
             Console.WriteLine("                        providers on the system");
+            Console.WriteLine("  --vdbench_devices     Print out sd lines for pasting into a vdbench config");
+            Console.WriteLine("                        file");
             Console.WriteLine();
             //                 0        1         2         3         4         5         6         7         8
             //                 12345678901234567890123456789012345678901234567890123456789012345678901234567890
@@ -1220,6 +1264,7 @@ namespace windiskhelper
             Console.WriteLine("  --force_mountpoints   Remove automount drive letters and remount with mount");
             Console.WriteLine("                        points");
             Console.WriteLine("  --force_unmount       Forcibly unmount volumes before logging out of targets");
+            Console.WriteLine("  --vdbench_host        Host number to use for vdbench sd devices");
             Console.WriteLine();
             //                 0        1         2         3         4         5         6         7         8
             //                 12345678901234567890123456789012345678901234567890123456789012345678901234567890
@@ -1303,6 +1348,8 @@ namespace windiskhelper
                 "list_lb_policy",
                 "clear_targ_secret",
                 "clear_portals",
+                "vdbench_devices",
+                "vdbench_host",
             };
 
             // Check for extra/misspelled args

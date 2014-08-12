@@ -3536,7 +3536,13 @@ namespace windiskhelper
             return reboot_required;
         }
 
-    
+        /// <summary>
+        /// Re-enumerate and refresh all attached disks
+        /// </summary>
+        public void RescanDisks()
+        {
+            ConnectVdsService(true);
+        }
     }
 }
 
