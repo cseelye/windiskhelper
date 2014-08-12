@@ -35,6 +35,7 @@ namespace windiskhelper
             cca.Target = "Console.Error";
             cca.Name = "ConsoleLogger";
             cca.Layout = patternLayout;
+            cca.Target = "Console.Out";
 
             ColoredConsoleAppender.LevelColors level = new ColoredConsoleAppender.LevelColors();
             level.Level = Level.Debug;
