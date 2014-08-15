@@ -496,6 +496,11 @@ namespace windiskhelper
             public bool Online { get; set; }
             public bool Readonly { get; set; }
             public string TargetType { get; set; }
+            public string EUISerialNumber { get; set; }
+
+            // SolidFire specific info
+            public string SolidfireClusterID { get; set; }
+            public int SolidfireVolumeID { get; set; }
 
             public DiskInfo()
             { }
@@ -517,6 +522,10 @@ namespace windiskhelper
                 this.Size = source.Size;
                 this.Target = source.Target;
                 this.TargetType = source.TargetType;
+                this.EUISerialNumber = source.EUISerialNumber;
+
+                this.SolidfireClusterID = source.SolidfireClusterID;
+                this.SolidfireVolumeID = source.SolidfireVolumeID;
             }
         }
 
@@ -2877,10 +2886,10 @@ namespace windiskhelper
         /// <returns></returns>
         public List<DiskInfo> ListDiskInfo(List<string> PortalAddressList = null, List<string> TargetList = null)
         {
-            Logger.Debug("Querying disk information");
             List<DiskInfo> disks_to_return = new List<DiskInfo>();
 
             // Use to map devices to their iSCSI targets
+            Logger.Debug("Querying iSCSI disk information");
             List<IscsiSessionInfo> iscsi_sessions = ListIscsiSessions();
 
             // Do we need to filter out any iSCSI volumes
@@ -2889,6 +2898,7 @@ namespace windiskhelper
             if (filter_iscsi)
                 matching_iscsi_targets = GetFilteredTargetSet(PortalAddressList, TargetList);
 
+            Logger.Debug("Querying VDS disk information");
             Service vds = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
@@ -2916,6 +2926,67 @@ namespace windiskhelper
                 if (disk_info != null)
                 {
                     disks_to_return.Add(disk_info);
+                }
+            }
+
+            Logger.Debug("Querying WMI disk information");
+            // Make a lookup table of deviceID => serial number
+            // At some points in time the serial number will come back as null, so we have to loop until we get it
+            ManagementObjectCollection wmi_disk_list = DoWmiQuery("SELECT * FROM Win32_DiskDrive", @"root\cimv2");
+            Dictionary<string, string> devid2serial = new Dictionary<string, string>();
+            bool show_warning = true;
+            DateTime start_time = DateTime.Now;
+            while (true)
+            {
+                bool allgood = true;
+                foreach (var disk in wmi_disk_list)
+                {
+                    string sernum = disk["SerialNumber"] as String;
+                    if (sernum == null)
+                    {
+                        if (show_warning)
+                        {
+                            Logger.Warn("Detected null disk info; waiting for disk database to be up to date");
+                            show_warning = false;
+                        }
+                        allgood = false;
+                        break;
+                    }
+                    devid2serial.Add(((string)disk["PNPDeviceID"]).ToLower(), sernum);
+                }
+                if (allgood)
+                    break;
+
+                devid2serial.Clear();
+                
+                if ((DateTime.Now - start_time).TotalSeconds > 300)
+                    throw new InitiatorException("Could not query disk info from WMI");
+
+                Thread.Sleep(3000);
+                wmi_disk_list = DoWmiQuery("SELECT * FROM Win32_DiskDrive", @"root\cimv2");
+            }
+
+            foreach (var disk_info in disks_to_return)
+            {
+                string dev_id = disk_info.DevicePath.Substring(4).Replace("#", @"\").ToLower();
+                dev_id = dev_id.Substring(0, dev_id.IndexOf('{') - 1);
+                if (devid2serial.ContainsKey(dev_id))
+                {
+                    disk_info.EUISerialNumber = devid2serial[dev_id];
+					disk_info.SolidfireClusterID = "";
+					disk_info.SolidfireVolumeID = 0;
+
+					// Try to parse SolidFire specific info
+					if ((disk_info.EUISerialNumber != null && disk_info.EUISerialNumber.ToLower().Contains("f47acc")) || 
+						(disk_info.IscsiTargetName != null && disk_info.IscsiTargetName.Contains("solidfire")))
+					{
+						for (int i = 0; i < 8; i += 2)
+						{
+							disk_info.SolidfireClusterID += Convert.ToChar(int.Parse(disk_info.EUISerialNumber.Substring(i, 2), System.Globalization.NumberStyles.AllowHexSpecifier));
+						}
+						disk_info.SolidfireVolumeID = int.Parse(disk_info.EUISerialNumber.Substring(8, 8), System.Globalization.NumberStyles.AllowHexSpecifier);
+					}
+
                 }
             }
 

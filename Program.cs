@@ -577,8 +577,11 @@ namespace windiskhelper
                     }
                     else
                     {
-                        output += " (FC) ";
+                        output += " (FC)";
+                        if (disk.SolidfireVolumeID > 0)
+                            output += ", volumeID: " + disk.SolidfireVolumeID;;
                     }
+                    output += 
                     output += ", SectorSize: " + disk.SectorSize;
                     if (disk.Online)
                         output += ", Flags: Online";
@@ -982,7 +985,9 @@ namespace windiskhelper
                     }
                     else
                     {
-                        output += " (FC) ";
+                        output += " (FC)";
+                        if (disk.SolidfireVolumeID > 0)
+                            output += ", volumeID: " + disk.SolidfireVolumeID; ;
                     }
                     output += ", SectorSize: " + disk.SectorSize;
                     if (disk.Online)
