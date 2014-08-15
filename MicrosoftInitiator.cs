@@ -272,11 +272,9 @@ namespace windiskhelper
                 {
                     Service vds_service = new Microsoft.Storage.Vds.ServiceLoader().LoadService(mClientHostname);
                     vds_service.WaitForServiceReady();
-                    Logger.Debug("Scanning for disks...");
-                    vds_service.Reenumerate();
-                    //Thread.Sleep(1000);
-                    vds_service.Refresh();
-                    //Thread.Sleep(1000);
+                    //Logger.Debug("Scanning for disks...");
+                    //vds_service.Reenumerate();
+                    //vds_service.Refresh();
                     Logger.Debug("Cleaning mount points...");
                     vds_service.CleanupObsoleteMountPoints();
                     mVdsService = vds_service;
@@ -289,15 +287,19 @@ namespace windiskhelper
                     }
                 }
             }
-            else
-            {
-                mVdsService.Reenumerate();
-                //Thread.Sleep(1000);
-                mVdsService.Refresh();
-                //Thread.Sleep(1000);
-            }
             mVdsService.AutoMount = false;
             return mVdsService;
+        }
+
+        /// <summary>
+        /// Re-enumerate and refresh all attached disks
+        /// </summary>
+        public void RescanDisks()
+        {
+            Service vds = ConnectVdsService();
+            Logger.Debug("Scanning for disks...");
+            vds.Reenumerate();
+            vds.Refresh();
         }
 
         private SoftwareProvider ConnectVdsProviderDynamic()
@@ -594,6 +596,14 @@ namespace windiskhelper
             public int PortNumber { get; set; }
             public int ScsiPathId { get; set; }
             public int TargetId { get; set; }
+
+            public MpioPathInfo()
+            {
+                Lun = -1;
+                PortNumber = -1;
+                ScsiPathId = -1;
+                TargetId = -1;
+            }
         }
 
         // From iscsidef.h in the Windows SDK
@@ -1192,10 +1202,12 @@ namespace windiskhelper
             Logger.Debug("Unrecognized error detected");
             foreach (PropertyData prop in e.ErrorInformation.Properties)
             {
-                Logger.Debug("    " + prop.Name + " => " + prop.Value.ToString() + "  (" + prop.Type.ToString() + ")");
+                string value = "";
+                if (prop.Value != null)
+                    value = prop.Value.ToString();
+                Logger.Debug("    " + prop.Name + " => " + value + "  (" + prop.Type.ToString() + ")");
             }
             return new InitiatorException("Unknown error", e);
-            
         }
 
         private static InitiatorException VdsExceptionToInitiatorException(VdsException e)
@@ -3364,12 +3376,24 @@ namespace windiskhelper
                     {
                         UInt64 path_id = (UInt64)pdo_wmi["PathIdentifier"];
                         var scsi_addr = pdo_wmi["ScsiAddress"] as ManagementBaseObject;
-                        var path = (from p in mpio_disk.DSM_Paths where p.DsmPathId == path_id select p).First();
-                        path.Lun = (byte)scsi_addr["Lun"];
-                        path.PortNumber = (byte)scsi_addr["PortNumber"];
-                        path.ScsiPathId = (byte)scsi_addr["ScsiPathId"];
-                        path.TargetId = (byte)scsi_addr["TargetId"];
+                        var path_list = from p in mpio_disk.DSM_Paths where p.DsmPathId == path_id select p;
+                        if (path_list.Count() > 0)
+                        {
+                            var path = path_list.First();
+                            path.Lun = (byte)scsi_addr["Lun"];
+                            path.PortNumber = (byte)scsi_addr["PortNumber"];
+                            path.ScsiPathId = (byte)scsi_addr["ScsiPathId"];
+                            path.TargetId = (byte)scsi_addr["TargetId"];
+                        }
+                        else
+                        {
+                            Logger.Debug("Could not find DSM path for " + mpio_disk.DeviceName + " path ID " + path_id);
+                        }
                     }
+                }
+                else
+                {
+                    Logger.Debug("Could not find mpio disk for " + instance_name);
                 }
             }
 
@@ -3536,12 +3560,45 @@ namespace windiskhelper
             return reboot_required;
         }
 
-        /// <summary>
-        /// Re-enumerate and refresh all attached disks
-        /// </summary>
-        public void RescanDisks()
+        public bool VerifyPaths(int ExpectedVolumeCount, int ExpectedPathsPerVolume)
         {
-            ConnectVdsService(true);
+            bool ret = true;
+
+            List<MpioDiskInfo> volumes = ListMpioDiskInfo();
+            if (volumes.Count < ExpectedVolumeCount)
+            {
+                Logger.Error("Expected " + ExpectedVolumeCount + " but found " + volumes.Count + " volumes");
+                ret = false;
+            }
+            else
+            {
+                Logger.Info("Found the expected number of volumes");
+            }
+
+            bool allgood = true;
+            foreach (var vol in volumes)
+            {
+                if (vol.DSM_Paths.Count < ExpectedPathsPerVolume)
+                {
+                    Logger.Error("Volume " + vol.LegacyDeviceName + " has " + vol.DSM_Paths.Count + " paths but expected " + ExpectedPathsPerVolume);
+                    allgood = false;
+                    ret = false;
+                }
+                if (vol.DSM_Paths.Count - vol.FailedPathCount < ExpectedPathsPerVolume)
+                {
+                    Logger.Error("Volume " + vol.LegacyDeviceName + " has " + (vol.DSM_Paths.Count - vol.FailedPathCount) + " healthy paths but expected " + ExpectedPathsPerVolume + " (" + vol.DSM_Paths.Count + " total paths, " + vol.FailedPathCount + " failed paths)");
+                    allgood = false;
+                    ret = false;
+                }
+                if (vol.FailedPathCount > 0 && vol.DSM_Paths.Count - vol.FailedPathCount >= ExpectedPathsPerVolume)
+                {
+                    Logger.Warn("Volume " + vol.LegacyDeviceName + " has " + vol.FailedPathCount + " failed paths, but " + (vol.DSM_Paths.Count - vol.FailedPathCount) + " healthy paths");
+                }
+            }
+            if (allgood)
+                Logger.Info("All volumes have the expected number of healthy paths");
+
+            return ret;
         }
     }
 }

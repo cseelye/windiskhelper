@@ -136,6 +136,7 @@ namespace windiskhelper
                     if (System.Diagnostics.Debugger.IsAttached)
                         break;
                 }
+                Logger.Info("Continuing");
             }
 
             // Initialize the initiator object for remote or local connection
@@ -970,6 +971,8 @@ namespace windiskhelper
                     Environment.Exit(EXIT_FAIL);
                 }
 
+                int total_paths = 0;
+                int failed_paths = 0;
                 foreach(var disk in disk_list)
                 {
                     string output = disk.LegacyDeviceName;
@@ -994,8 +997,11 @@ namespace windiskhelper
 
                     Logger.Info(output);
 
-                    output = "    NumberOfPaths: " + disk.DSM_Paths.Count + ", FailedPaths: " + disk.FailedPathCount + ", LBPolicy: " + disk.LoadBalancePolicy + ", SupportedLBPolicy: [" + String.Join("|", disk.Supported_LB_Policies.ToArray()) + "]";
+                    output = "    NumberOfPaths: " + disk.DSM_Paths.Count + ", FailedPaths: " + disk.FailedPathCount + ", LBPolicy: " + disk.LoadBalancePolicy;
                     Logger.Info(output);
+
+                    total_paths += disk.DSM_Paths.Count;
+                    failed_paths += disk.FailedPathCount;
 
                     if (batch)
                     {
@@ -1013,10 +1019,14 @@ namespace windiskhelper
                             output += "/RW";
                         output += ", MountPoint: " + disk.MountPoint;
                         Console.WriteLine(output);
-                        output = "    NumberOfPaths: " + disk.DSM_Paths.Count + ", FailedPaths: " + disk.FailedPathCount + ", LBPolicy: " + disk.LoadBalancePolicy + ", SupportedLBPolicy: [" + String.Join("|", disk.Supported_LB_Policies.ToArray()) + "]";
+                        output = "    NumberOfPaths: " + disk.DSM_Paths.Count + ", FailedPaths: " + disk.FailedPathCount + ", LBPolicy: " + disk.LoadBalancePolicy;
                         Console.WriteLine(output);
                     }
                 }
+                Logger.Info("Total Paths: " + total_paths);
+                Logger.Info("Failed Paths: " + failed_paths);
+                Logger.Info("Total Disk Devices: " + disk_list.Count);
+
                 if (json)
                     Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(disk_list, Newtonsoft.Json.Formatting.Indented));
             }
@@ -1138,7 +1148,26 @@ namespace windiskhelper
                     disk_index++;
                 }
             }
-
+            else if (Args["verify_paths"] != null)
+            {
+                int volume_count = int.Parse(Args["volume_count"]);
+                int paths_per_volume = int.Parse(Args["paths_per_volume"]);
+                bool status = false;
+                try
+                {
+                    status = msinit.VerifyPaths(volume_count, paths_per_volume);
+                }
+                catch (MicrosoftInitiator.InitiatorException e)
+                {
+                    Logger.Error("Validate paths failed: " + e.Message);
+                    LogExceptionDetail(e);
+                    if (batch || json)
+                        Console.Error.WriteLine("Validate paths failed: " + e.Message);
+                    Environment.Exit(EXIT_FAIL);
+                }
+                if (!status)
+                    Environment.Exit(EXIT_FAIL);
+            }
             Environment.Exit(EXIT_SUCCESS);
         }
 
@@ -1223,12 +1252,17 @@ namespace windiskhelper
             Console.WriteLine("  --set_lb_policy       Set the MPIO load balancing policy for MPIO volumes.");
             Console.WriteLine("                        Requires policy, optionally include devices");
             Console.WriteLine("  --list_paths          Display the list of volumes and their paths");
+            Console.WriteLine("  --verify_paths        Verify the correct number of volumes and paths per");
+            Console.WriteLine("                        volume are present and healthy. Requires volume_count");
+            Console.WriteLine("                        and paths_per_volume");
             Console.WriteLine();
             Console.WriteLine("MPIO Options:");
             Console.WriteLine("  --policy              The load balance policy to set");
             Console.WriteLine("  --devices             Only operate on this list of devices (device names e.g.");
             Console.WriteLine("                        \"\\\\.\\PhysicalDrive2, \\\\.\\PhysicalDrive3\"");
             Console.WriteLine("  --device_string       The device string to pass to MPIO to claim");
+            Console.WriteLine("  --volume_count        The expected number of volumes to be present");
+            Console.WriteLine("  --paths_per_volume    The expected number of healthy paths per volume");
             Console.WriteLine();
             //                 0        1         2         3         4         5         6         7         8
             //                 12345678901234567890123456789012345678901234567890123456789012345678901234567890
@@ -1317,6 +1351,7 @@ namespace windiskhelper
                 "set_initiatorname",
                 "default_initiatorname",
                 "clean",
+                "clean_iscsi",
                 "portal_address",
                 "chap_user",
                 "chap_secret",
@@ -1351,6 +1386,9 @@ namespace windiskhelper
                 "clear_portals",
                 "vdbench_devices",
                 "vdbench_host",
+                "verify_paths",
+                "paths_per_volume",
+                "volume_count",
             };
 
             // Check for extra/misspelled args
@@ -1491,6 +1529,11 @@ namespace windiskhelper
             {
                 if (!CheckRequiredArgsWithValues(Args, new List<string>() { "device_string" }))
                     return false;
+			}
+            if (Args["verify_paths"] != null)
+            {
+                if (!CheckRequiredArgsWithValues(Args, new List<string>() { "paths_per_volume", "volume_count" }))
+                    return false;
             }
 
             // Check for valid input
@@ -1624,6 +1667,31 @@ namespace windiskhelper
                     {
                         return false;
                     }
+                }
+            }
+            if (Args["verify_paths"] != null)
+            {
+                try
+                {
+                    int i = int.Parse(Args["volume_count"]);
+                    if (i <= 0)
+                        throw new FormatException();
+                }
+                catch (FormatException)
+                {
+                    Console.Error.WriteLine("volume_count must be a positive integer");
+                    return false;
+                }
+                try
+                {
+                    int i = int.Parse(Args["paths_per_volume"]);
+                    if (i <= 0)
+                        throw new FormatException();
+                }
+                catch (FormatException)
+                {
+                    Console.Error.WriteLine("paths_per_volume must be a positive integer");
+                    return false;
                 }
             }
             
