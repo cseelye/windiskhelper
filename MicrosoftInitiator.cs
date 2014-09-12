@@ -244,7 +244,7 @@ namespace windiskhelper
             }
             catch (COMException e)
             {
-                throw ComExceptionToIscsiException(e);
+                throw ComExceptionToInitiatorException(e);
             }
 
             if (wmiConnections.ContainsKey(Namespace.ToLower()))
@@ -1222,7 +1222,7 @@ namespace windiskhelper
         private static InitiatorException VdsExceptionToInitiatorException(VdsException e)
         {
             if (e.InnerException != null)
-                return ComExceptionToIscsiException((COMException)e.InnerException);
+                return ComExceptionToInitiatorException((COMException)e.InnerException);
             Regex re = new Regex(@"error code: (\d+)");
             Match m = re.Match(e.Message);
             if (m.Success)
@@ -1246,7 +1246,7 @@ namespace windiskhelper
             return new InitiatorException(e.Message, e);
         }
 
-        private static InitiatorException ComExceptionToIscsiException(COMException e)
+        private static InitiatorException ComExceptionToInitiatorException(COMException e)
         {
             // See if the error is a standard Win32 error
             System.ComponentModel.Win32Exception w32ex = new System.ComponentModel.Win32Exception(e.ErrorCode);
@@ -1661,6 +1661,10 @@ namespace windiskhelper
                 // Make sure this pack contains disks that meet the filter criteria
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
+                    // Skip disks that have been deleted but not cleaned up yet
+                    if (!IsStillAttached(disk))
+                        break;
+
                     dev_name = disk.Name.Replace("?", ".");
                     if (filter_devices && !DeviceList.Contains(dev_name))
                         break;
@@ -1717,6 +1721,33 @@ namespace windiskhelper
         }
 
         /// <summary>
+        /// Check if a VDS disk object represents a disk that is still attached to the system
+        /// </summary>
+        /// <param name="VdsDisk"></param>
+        /// <returns></returns>
+        private bool IsStillAttached(Disk VdsDisk)
+        {
+            try
+            {
+                string a = VdsDisk.DevicePath;
+                return true;
+            }
+            catch (System.Runtime.InteropServices.COMException e)
+            {
+                uint hresult = (uint)e.ErrorCode;
+                if (hresult == (uint)VDS_COM_ERROR_CODES.VDS_E_OBJECT_DELETED ||
+                    hresult == (uint)VDS_COM_ERROR_CODES.VDS_E_OBJECT_NOT_FOUND)
+                {
+                    return false;
+                }
+                else
+                {
+                    throw ComExceptionToInitiatorException(e);
+                }
+            }
+        }
+
+        /// <summary>
         /// Unmount volumes and take disk devices offline
         /// </summary>
         /// <param name="DeviceList">Only operate on these devices</param>
@@ -1746,6 +1777,13 @@ namespace windiskhelper
                 bool skip = false;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
+                    // Skip disks that have been deleted but not cleaned up yet
+                    if (!IsStillAttached(disk))
+                    {
+                        skip = true;
+                        break;
+                    }
+
                     dev_name = disk.Name.Replace("?", ".");
                     if (filter_devices && !DeviceList.Contains(dev_name))
                     {
@@ -1838,6 +1876,10 @@ namespace windiskhelper
             bool refresh_needed = false;
             foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
             {
+                // Skip disks that have been deleted but not cleaned up yet
+                if (!IsStillAttached(disk))
+                    continue;
+
                 // Skip system disks
                 if (IsSystemDisk(disk))
                     continue;
@@ -1956,6 +1998,10 @@ namespace windiskhelper
                 string dev_name = "";
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
+                    // Skip disks that have been deleted but not cleaned up yet
+                    if (!IsStillAttached(disk))
+                        break;
+
                     dev_name = disk.Name.Replace("?", ".");
                     if (filter_devices && !DeviceList.Contains(dev_name))
                         break;
@@ -2958,7 +3004,7 @@ namespace windiskhelper
                     break;
 
                 devid2serial.Clear();
-                
+
                 if ((DateTime.Now - start_time).TotalSeconds > 300)
                     throw new InitiatorException("Could not query disk info from WMI");
 
@@ -2977,7 +3023,7 @@ namespace windiskhelper
 					disk_info.SolidfireVolumeID = 0;
 
 					// Try to parse SolidFire specific info
-					if ((disk_info.EUISerialNumber != null && disk_info.EUISerialNumber.ToLower().Contains("f47acc")) || 
+					if ((disk_info.EUISerialNumber != null && disk_info.EUISerialNumber.ToLower().Contains("f47acc")) ||
 						(disk_info.IscsiTargetName != null && disk_info.IscsiTargetName.Contains("solidfire")))
 					{
 						for (int i = 0; i < 8; i += 2)
@@ -3003,6 +3049,10 @@ namespace windiskhelper
         /// <returns></returns>
         private DiskInfo VdsDiskToDiskInfo(Disk VdsDisk, List<IscsiSessionInfo> IscsiSessions, HashSet<string> MatchIscsiTargets = null)
         {
+            // Skip disks that have been deleted but not cleaned up yet
+            if (!IsStillAttached(VdsDisk))
+                return null;
+
             bool filter_iscsi = MatchIscsiTargets != null && MatchIscsiTargets.Count > 0;
 
             // Skip this disk if it is not iSCSI and we are only looking for iSCSI disks
