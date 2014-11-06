@@ -2988,6 +2988,8 @@ namespace windiskhelper
                 foreach (var disk in wmi_disk_list)
                 {
                     string sernum = disk["SerialNumber"] as String;
+                    if (disk["Model"].ToString().ToLower().Contains("vmware"))
+                        continue;
                     if (sernum == null)
                     {
                         if (show_warning)
