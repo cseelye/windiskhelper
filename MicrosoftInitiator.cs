@@ -553,23 +553,23 @@ namespace windiskhelper
             // Additional info from VDS AdvancedDisk, DSM_QueryLBPolicy_V2, DSM_Load_Balance_Policy_V2, DSM_QuerySupportedLBPolicies_V2
             public string LoadBalancePolicy { get; set; }
             public int FailedPathCount { get; set; }
-            public List<MpioPathInfo> DSM_Paths { get; set; }
+            public List<MpioPathInfoSimple> DSM_Paths { get; set; }
 
             public MpioDiskInfoSimple()
             {
-                this.DSM_Paths = new List<MpioPathInfo>();
+                this.DSM_Paths = new List<MpioPathInfoSimple>();
             }
 
             public MpioDiskInfoSimple(DiskInfoSimple s) : base(s)
             {
-                this.DSM_Paths = new List<MpioPathInfo>();
+                this.DSM_Paths = new List<MpioPathInfoSimple>();
             }
 
             public MpioDiskInfoSimple(MpioDiskInfoDetailed detail) : base(detail)
             {
                 this.LoadBalancePolicy = detail.LoadBalancePolicy;
                 this.FailedPathCount = detail.FailedPathCount;
-                this.DSM_Paths = detail.DSM_Paths;
+                this.DSM_Paths = detail.DSM_Paths.ConvertAll(x => new MpioPathInfoSimple(x));
             }
         }
 
@@ -578,30 +578,57 @@ namespace windiskhelper
             // Additional info from VDS AdvancedDisk, DSM_QueryLBPolicy_V2, DSM_Load_Balance_Policy_V2, DSM_QuerySupportedLBPolicies_V2
             public string LoadBalancePolicy { get; set; }
             public int FailedPathCount { get; set; }
-            public List<MpioPathInfo> DSM_Paths { get; set; }
+            public List<MpioPathInfoDetailed> DSM_Paths { get; set; }
             public string InstanceName { get; set; }
             public string DeviceName { get; set; }
             public List<string> Supported_LB_Policies { get; set; }
 
             public MpioDiskInfoDetailed()
             {
-                this.DSM_Paths = new List<MpioPathInfo>();
+                this.DSM_Paths = new List<MpioPathInfoDetailed>();
                 this.Supported_LB_Policies = new List<string>();
             }
 
             public MpioDiskInfoDetailed(DiskInfoDetailed d) : base(d)
             {
-                this.DSM_Paths = new List<MpioPathInfo>();
+                this.DSM_Paths = new List<MpioPathInfoDetailed>();
                 Supported_LB_Policies = new List<string>();
             }
         }
 
-        public class MpioPathInfo
+        public class MpioPathInfoSimple
+        {
+            // Info from MPIO_DSM_Path_V2, PDOSCSI_ADDR
+            public UInt64 DsmPathId { get; set; }
+            public UInt32 FailedPath { get; set; }
+            public int Lun { get; set; }
+            public int PortNumber { get; set; }
+            public int ScsiPathId { get; set; }
+            public int TargetId { get; set; }
+
+            public MpioPathInfoSimple()
+            {
+                Lun = -1;
+                PortNumber = -1;
+                ScsiPathId = -1;
+                TargetId = -1;
+            }
+
+            public MpioPathInfoSimple(MpioPathInfoDetailed detail)
+            {
+                this.DsmPathId = detail.DsmPathId;
+                this.FailedPath = detail.FailedPath;
+                this.Lun = detail.Lun;
+                this.PortNumber = detail.PortNumber;
+                this.ScsiPathId = detail.ScsiPathId;
+                this.TargetId = detail.TargetId;
+            }
+        }
+
+        public class MpioPathInfoDetailed : MpioPathInfoSimple
         {
             // Info from MPIO_DSM_Path_V2, PDOSCSI_ADDR
             public UInt32 ALUASupport { get; set; }
-            public UInt64 DsmPathId { get; set; }
-            public UInt32 FailedPath { get; set; }
             public UInt32 OptimizedPath { get; set; }
             public UInt32 PathWeight { get; set; }
             public UInt32 PreferredPath { get; set; }
@@ -611,17 +638,9 @@ namespace windiskhelper
             public UInt16 TargetPortGroup_Identifier { get; set; }
             public bool TargetPortGroup_Preferred { get; set; }
             public string TargetPortGroup_State { get; set; }
-            public int Lun { get; set; }
-            public int PortNumber { get; set; }
-            public int ScsiPathId { get; set; }
-            public int TargetId { get; set; }
 
-            public MpioPathInfo()
+            public MpioPathInfoDetailed() : base()
             {
-                Lun = -1;
-                PortNumber = -1;
-                ScsiPathId = -1;
-                TargetId = -1;
             }
         }
 
@@ -3501,7 +3520,7 @@ namespace windiskhelper
                 int failed_path_count = 0;
                 foreach (var path in path_list)
                 {
-                    MpioPathInfo new_path = new MpioPathInfo();
+                    MpioPathInfoDetailed new_path = new MpioPathInfoDetailed();
                     new_path.ALUASupport = (UInt32)path["ALUASupport"];
                     new_path.DsmPathId = (UInt64)path["DsmPathId"];
                     new_path.FailedPath = (UInt32)path["FailedPath"];
