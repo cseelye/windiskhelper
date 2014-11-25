@@ -554,7 +554,7 @@ namespace windiskhelper
             }
             else if (Args["list_disks"] != null)
             {
-                List<MicrosoftInitiator.DiskInfo> disk_list = new List<MicrosoftInitiator.DiskInfo>();
+                List<MicrosoftInitiator.DiskInfoDetailed> disk_list = new List<MicrosoftInitiator.DiskInfoDetailed>();
                 try
                 {
                     disk_list = msinit.ListDiskInfo(PortalAddressList: arg_portal_list);
@@ -568,7 +568,7 @@ namespace windiskhelper
                     Environment.Exit(EXIT_FAIL);
                 }
 
-                foreach (MicrosoftInitiator.DiskInfo disk in disk_list)
+                foreach (MicrosoftInitiator.DiskInfoDetailed disk in disk_list)
                 {
                     string output = disk.LegacyDeviceName;
                     if (disk.TargetType.ToLower() == "iscsi")
@@ -613,7 +613,18 @@ namespace windiskhelper
                     }
                 }
                 if (json)
-                    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(disk_list, Newtonsoft.Json.Formatting.Indented));
+                {
+                    if (Args["detail"] != null)
+                    {
+                        Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(disk_list, Newtonsoft.Json.Formatting.Indented));
+                    }
+                    else
+                    {
+                        // Convert to DiskInfoSimple
+                        var simple_list = disk_list.ConvertAll(x => new MicrosoftInitiator.DiskInfoSimple(x));
+                        Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(simple_list, Newtonsoft.Json.Formatting.Indented));
+                    }
+                }
             }
             else if (Args["rescan_disks"] != null)
             {
@@ -959,7 +970,7 @@ namespace windiskhelper
             }
             else if (Args["list_paths"] != null)
             {
-                List<MicrosoftInitiator.MpioDiskInfo> disk_list = new List<MicrosoftInitiator.MpioDiskInfo>();
+                List<MicrosoftInitiator.MpioDiskInfoDetailed> disk_list = new List<MicrosoftInitiator.MpioDiskInfoDetailed>();
                 try
                 {
                     disk_list = msinit.ListMpioDiskInfo();
@@ -1032,7 +1043,18 @@ namespace windiskhelper
                 Logger.Info("Total Disk Devices: " + disk_list.Count);
 
                 if (json)
-                    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(disk_list, Newtonsoft.Json.Formatting.Indented));
+                {
+                    if (Args["detail"] != null)
+                    {
+                        Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(disk_list, Newtonsoft.Json.Formatting.Indented));
+                    }
+                    else
+                    {
+                        // Convert to MpioDiskInfoSimple
+                        var simple_list = disk_list.ConvertAll(x => new MicrosoftInitiator.MpioDiskInfoSimple(x));
+                        Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(simple_list, Newtonsoft.Json.Formatting.Indented));
+                    }
+                }
             }
             else if (Args["enable_mpio"] != null)
             {
@@ -1131,7 +1153,7 @@ namespace windiskhelper
                 if (Args["vdbench_host"] != null)
                     host_number = Args["vdbench_host"];
 
-                List<MicrosoftInitiator.DiskInfo> disk_list = new List<MicrosoftInitiator.DiskInfo>();
+                List<MicrosoftInitiator.DiskInfoDetailed> disk_list = new List<MicrosoftInitiator.DiskInfoDetailed>();
                 try
                 {
                     disk_list = msinit.ListDiskInfo(PortalAddressList: arg_portal_list);
@@ -1146,7 +1168,7 @@ namespace windiskhelper
                 }
 
                 int disk_index = 1;
-                foreach (MicrosoftInitiator.DiskInfo disk in disk_list)
+                foreach (MicrosoftInitiator.DiskInfoDetailed disk in disk_list)
                 {
                     Console.WriteLine("sd=sd" + host_number + "_" + disk_index + ",host=hd" + host_number + ",lun=" + disk.LegacyDeviceName + ",openflags=directio,size=" + disk.Size);
                     disk_index++;
@@ -1256,11 +1278,13 @@ namespace windiskhelper
             Console.WriteLine("  --set_lb_policy       Set the MPIO load balancing policy for MPIO volumes.");
             Console.WriteLine("                        Requires policy, optionally include devices");
             Console.WriteLine("  --list_paths          Display the list of volumes and their paths");
+            Console.WriteLine("                        Optionally include detail");
             Console.WriteLine("  --verify_paths        Verify the correct number of volumes and paths per");
             Console.WriteLine("                        volume are present and healthy. Requires volume_count");
             Console.WriteLine("                        and paths_per_volume");
             Console.WriteLine();
             Console.WriteLine("MPIO Options:");
+            Console.WriteLine("  --detail              Show more information in JSON output");
             Console.WriteLine("  --policy              The load balance policy to set");
             Console.WriteLine("  --devices             Only operate on this list of devices (device names e.g.");
             Console.WriteLine("                        \"\\\\.\\PhysicalDrive2, \\\\.\\PhysicalDrive3\"");
@@ -1273,7 +1297,7 @@ namespace windiskhelper
             Console.WriteLine("Disk Management Verbs:");
             Console.WriteLine("  --list_disks          Display a list of disk devices and their corresponding");
             Console.WriteLine("                        targets and mount points. Optionally include");
-            Console.WriteLine("                        portal_address");
+            Console.WriteLine("                        portal_address, detail");
             Console.WriteLine("  --rescan_disks        Rescan for added/removed disks and paths");
             Console.WriteLine("  --online_disks        Set disk devices online and read-write.");
             Console.WriteLine("                        Optionally include devices");
@@ -1295,6 +1319,7 @@ namespace windiskhelper
             //                 0        1         2         3         4         5         6         7         8
             //                 12345678901234567890123456789012345678901234567890123456789012345678901234567890
             Console.WriteLine("Disk Management Options:");
+            Console.WriteLine("  --detail              Show more information in JSON output");
             Console.WriteLine("  --devices             Only operate on this list of devices (device names e.g.");
             Console.WriteLine("                        \"\\\\.\\PhysicalDrive2, \\\\.\\PhysicalDrive3\"");
             Console.WriteLine("  --relabel             Update the volume label on existing partitions to match");
@@ -1393,6 +1418,7 @@ namespace windiskhelper
                 "verify_paths",
                 "paths_per_volume",
                 "volume_count",
+                "detail",
             };
 
             // Check for extra/misspelled args

@@ -479,20 +479,15 @@ namespace windiskhelper
             Any
         }
 
-        public class DiskInfo
+        public class DiskInfoSimple
         {
             public string IscsiTargetName { get; set; }
             public string IscsiPortalAddress { get; set; }
             public UInt32 DeviceNumber { get; set; }
             public string LegacyDeviceName { get; set; }
-            public string DevicePath { get; set; }
             public string MountPoint { get; set; }
             public UInt32 SectorSize { get; set; }
             public UInt64 Size { get; set; }
-            public UInt32 Port { get; set; }
-            public UInt32 Path { get; set; }
-            public UInt32 Target { get; set; }
-            public UInt32 Lun { get; set; }
             public bool Online { get; set; }
             public bool Readonly { get; set; }
             public string TargetType { get; set; }
@@ -502,30 +497,131 @@ namespace windiskhelper
             public string SolidfireClusterID { get; set; }
             public int SolidfireVolumeID { get; set; }
 
-            public DiskInfo()
-            { }
+            public UInt32 Lun { get; set; }
 
-            public DiskInfo(DiskInfo source)
+            public DiskInfoSimple()
             {
-                this.DeviceNumber = source.DeviceNumber;
-                this.DevicePath = source.DevicePath;
-                this.IscsiPortalAddress = source.IscsiPortalAddress;
+            }
+
+            public DiskInfoSimple(DiskInfoSimple source)
+            {
                 this.IscsiTargetName = source.IscsiTargetName;
+                this.IscsiPortalAddress = source.IscsiPortalAddress;
+                this.DeviceNumber = source.DeviceNumber;
                 this.LegacyDeviceName = source.LegacyDeviceName;
-                this.Lun = source.Lun;
                 this.MountPoint = source.MountPoint;
-                this.Online = source.Online;
-                this.Path = source.Path;
-                this.Port = source.Port;
-                this.Readonly = source.Readonly;
                 this.SectorSize = source.SectorSize;
                 this.Size = source.Size;
-                this.Target = source.Target;
+                this.Online = source.Online;
+                this.Readonly = source.Readonly;
                 this.TargetType = source.TargetType;
                 this.EUISerialNumber = source.EUISerialNumber;
 
                 this.SolidfireClusterID = source.SolidfireClusterID;
                 this.SolidfireVolumeID = source.SolidfireVolumeID;
+
+                this.Lun = source.Lun;
+            }
+        }
+
+        public class DiskInfoDetailed : DiskInfoSimple
+        {
+            public string DevicePath { get; set; }
+            public UInt32 Port { get; set; }
+            public UInt32 Path { get; set; }
+            public UInt32 Target { get; set; }
+            public string EUISerialNumber { get; set; }
+            public string ClusterID { get; set; }
+
+            public DiskInfoDetailed()
+            {
+            }
+
+            public DiskInfoDetailed(DiskInfoDetailed source) : base((DiskInfoSimple)source)
+            {
+                this.DevicePath = source.DevicePath;
+                this.Path = source.Path;
+                this.Port = source.Port;
+                this.Target = source.Target;
+                this.EUISerialNumber = source.EUISerialNumber;
+                this.ClusterID = source.ClusterID;
+            }
+        }
+
+        public class MpioDiskInfoSimple : DiskInfoSimple
+        {
+            // Additional info from VDS AdvancedDisk, DSM_QueryLBPolicy_V2, DSM_Load_Balance_Policy_V2, DSM_QuerySupportedLBPolicies_V2
+            public string LoadBalancePolicy { get; set; }
+            public int FailedPathCount { get; set; }
+            public List<MpioPathInfo> DSM_Paths { get; set; }
+
+            public MpioDiskInfoSimple()
+            {
+                this.DSM_Paths = new List<MpioPathInfo>();
+            }
+
+            public MpioDiskInfoSimple(DiskInfoSimple s) : base(s)
+            {
+                this.DSM_Paths = new List<MpioPathInfo>();
+            }
+
+            public MpioDiskInfoSimple(MpioDiskInfoDetailed detail) : base(detail)
+            {
+                this.LoadBalancePolicy = detail.LoadBalancePolicy;
+                this.FailedPathCount = detail.FailedPathCount;
+                this.DSM_Paths = detail.DSM_Paths;
+            }
+        }
+
+        public class MpioDiskInfoDetailed : DiskInfoDetailed
+        {
+            // Additional info from VDS AdvancedDisk, DSM_QueryLBPolicy_V2, DSM_Load_Balance_Policy_V2, DSM_QuerySupportedLBPolicies_V2
+            public string LoadBalancePolicy { get; set; }
+            public int FailedPathCount { get; set; }
+            public List<MpioPathInfo> DSM_Paths { get; set; }
+            public string InstanceName { get; set; }
+            public string DeviceName { get; set; }
+            public List<string> Supported_LB_Policies { get; set; }
+
+            public MpioDiskInfoDetailed()
+            {
+                this.DSM_Paths = new List<MpioPathInfo>();
+                this.Supported_LB_Policies = new List<string>();
+            }
+
+            public MpioDiskInfoDetailed(DiskInfoDetailed d) : base(d)
+            {
+                this.DSM_Paths = new List<MpioPathInfo>();
+                Supported_LB_Policies = new List<string>();
+            }
+        }
+
+        public class MpioPathInfo
+        {
+            // Info from MPIO_DSM_Path_V2, PDOSCSI_ADDR
+            public UInt32 ALUASupport { get; set; }
+            public UInt64 DsmPathId { get; set; }
+            public UInt32 FailedPath { get; set; }
+            public UInt32 OptimizedPath { get; set; }
+            public UInt32 PathWeight { get; set; }
+            public UInt32 PreferredPath { get; set; }
+            public UInt32 PrimaryPath { get; set; }
+            public UInt64 Reserved { get; set; }
+            public bool SymmetricLUA { get; set; }
+            public UInt16 TargetPortGroup_Identifier { get; set; }
+            public bool TargetPortGroup_Preferred { get; set; }
+            public string TargetPortGroup_State { get; set; }
+            public int Lun { get; set; }
+            public int PortNumber { get; set; }
+            public int ScsiPathId { get; set; }
+            public int TargetId { get; set; }
+
+            public MpioPathInfo()
+            {
+                Lun = -1;
+                PortNumber = -1;
+                ScsiPathId = -1;
+                TargetId = -1;
             }
         }
 
@@ -561,58 +657,6 @@ namespace windiskhelper
             STATE_UNAVAILABLE = 3,
             [Description("Not used")]
             STATE_NOT_USED = 16,
-        }
-
-        public class MpioDiskInfo : DiskInfo
-        {
-            // Additional info from VDS AdvancedDisk, DSM_QueryLBPolicy_V2, DSM_Load_Balance_Policy_V2, DSM_QuerySupportedLBPolicies_V2
-            public string InstanceName { get; set; }
-            public string DeviceName { get; set; }
-            public string LoadBalancePolicy { get; set; }
-            public List<string> Supported_LB_Policies { get; set; }
-            public int FailedPathCount { get; set; }
-            public List<MpioPathInfo> DSM_Paths { get; set; }
-
-            public MpioDiskInfo()
-            {
-                Supported_LB_Policies = new List<string>();
-                DSM_Paths = new List<MpioPathInfo>();
-            }
-
-            public MpioDiskInfo(DiskInfo d) : base(d)
-            {
-                Supported_LB_Policies = new List<string>();
-                DSM_Paths = new List<MpioPathInfo>();
-            }
-        }
-
-        public class MpioPathInfo
-        {
-            // Info from MPIO_DSM_Path_V2, PDOSCSI_ADDR
-            public UInt32 ALUASupport { get; set; }
-            public UInt64 DsmPathId { get; set; }
-            public UInt32 FailedPath { get; set; }
-            public UInt32 OptimizedPath { get; set; }
-            public UInt32 PathWeight { get; set; }
-            public UInt32 PreferredPath { get; set; }
-            public UInt32 PrimaryPath { get; set; }
-            public UInt64 Reserved { get; set; }
-            public bool SymmetricLUA { get; set; }
-            public UInt16 TargetPortGroup_Identifier { get; set; }
-            public bool TargetPortGroup_Preferred { get; set; }
-            public string TargetPortGroup_State { get; set; }
-            public int Lun { get; set; }
-            public int PortNumber { get; set; }
-            public int ScsiPathId { get; set; }
-            public int TargetId { get; set; }
-
-            public MpioPathInfo()
-            {
-                Lun = -1;
-                PortNumber = -1;
-                ScsiPathId = -1;
-                TargetId = -1;
-            }
         }
 
         // From iscsidef.h in the Windows SDK
@@ -2930,9 +2974,9 @@ namespace windiskhelper
         /// <param name="PortalAddressList">Only return iSCSI disks from these portals</param>
         /// <param name="TargetList">Only return iSCSI disks from these targets</param>
         /// <returns></returns>
-        public List<DiskInfo> ListDiskInfo(List<string> PortalAddressList = null, List<string> TargetList = null)
+        public List<DiskInfoDetailed> ListDiskInfo(List<string> PortalAddressList = null, List<string> TargetList = null)
         {
-            List<DiskInfo> disks_to_return = new List<DiskInfo>();
+            List<DiskInfoDetailed> disks_to_return = new List<DiskInfoDetailed>();
 
             // Use to map devices to their iSCSI targets
             Logger.Debug("Querying iSCSI disk information");
@@ -2949,7 +2993,7 @@ namespace windiskhelper
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                DiskInfo disk_info = null;
+                DiskInfoDetailed disk_info = null;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
                     disk_info = VdsDiskToDiskInfo(disk, iscsi_sessions, matching_iscsi_targets);
@@ -2968,7 +3012,7 @@ namespace windiskhelper
             }
             foreach (AdvancedDisk disk in vds.UnallocatedDisks)
             {
-                DiskInfo disk_info = VdsDiskToDiskInfo(disk, iscsi_sessions, matching_iscsi_targets);
+                DiskInfoDetailed disk_info = VdsDiskToDiskInfo(disk, iscsi_sessions, matching_iscsi_targets);
                 if (disk_info != null)
                 {
                     disks_to_return.Add(disk_info);
@@ -3049,7 +3093,7 @@ namespace windiskhelper
         /// <param name="IscsiSessions">The list of current iSCSI sessions</param>
         /// <param name="MatchIscsiTargets">Only return a value if the disk is from a session in this list</param>
         /// <returns></returns>
-        private DiskInfo VdsDiskToDiskInfo(Disk VdsDisk, List<IscsiSessionInfo> IscsiSessions, HashSet<string> MatchIscsiTargets = null)
+        private DiskInfoDetailed VdsDiskToDiskInfo(Disk VdsDisk, List<IscsiSessionInfo> IscsiSessions, HashSet<string> MatchIscsiTargets = null)
         {
             // Skip disks that have been deleted but not cleaned up yet
             if (!IsStillAttached(VdsDisk))
@@ -3086,7 +3130,7 @@ namespace windiskhelper
                 portal = sess.TargetAddress;
             }
 
-            DiskInfo disk_info = new DiskInfo();
+            DiskInfoDetailed disk_info = new DiskInfoDetailed();
             disk_info.DevicePath = VdsDisk.DevicePath;
             disk_info.LegacyDeviceName = dev_name;
             disk_info.DeviceNumber = dev_number;
@@ -3417,14 +3461,14 @@ namespace windiskhelper
         /// Get a list of all disks and their path info
         /// </summary>
         /// <returns></returns>
-        public List<MpioDiskInfo> ListMpioDiskInfo()
+        public List<MpioDiskInfoDetailed> ListMpioDiskInfo()
         {
             // Get the basic disk info
-            List<DiskInfo> simple_disk_list = ListDiskInfo();
+            List<DiskInfoDetailed> simple_disk_list = ListDiskInfo();
 
-            List<MpioDiskInfo> disks_to_return = new List<MpioDiskInfo>();
+            List<MpioDiskInfoDetailed> disks_to_return = new List<MpioDiskInfoDetailed>();
             foreach (var d in simple_disk_list)
-                disks_to_return.Add(new MpioDiskInfo(d));
+                disks_to_return.Add(new MpioDiskInfoDetailed(d));
 
             if (!MpioWmiInstalled())
             {
@@ -3443,7 +3487,7 @@ namespace windiskhelper
                 dsm_disks.Add(instance_name, disk);
             }
 
-            foreach (MpioDiskInfo mpio_disk_info in disks_to_return)
+            foreach (MpioDiskInfoDetailed mpio_disk_info in disks_to_return)
             {
                 string dev_path = mpio_disk_info.DevicePath.Substring(4).Replace("#", @"\").ToLower();
                 dev_path = dev_path.Substring(0, dev_path.IndexOf('{') - 1);
@@ -3687,7 +3731,7 @@ namespace windiskhelper
         {
             bool ret = true;
 
-            List<MpioDiskInfo> volumes = ListMpioDiskInfo();
+            List<MpioDiskInfoDetailed> volumes = ListMpioDiskInfo();
             if (volumes.Count < ExpectedVolumeCount)
             {
                 Logger.Error("Expected " + ExpectedVolumeCount + " but found " + volumes.Count + " volumes");
