@@ -3050,9 +3050,17 @@ namespace windiskhelper
                 bool allgood = true;
                 foreach (var disk in wmi_disk_list)
                 {
-                    string sernum = disk["SerialNumber"] as String;
-                    if (disk["Model"].ToString().ToLower().Contains("vmware"))
+                    string model = disk["Model"] as String;
+                    if (model == null)
+                    {
+                        Logger.Debug(disk["DeviceID"] + " has a null model");
+                    }
+
+                    // Check for VMware disks and skip
+                    if (model != null && model.ToLower().Contains("vmware"))
                         continue;
+
+                    string sernum = disk["SerialNumber"] as String;
                     if (sernum == null)
                     {
                         if (show_warning)
