@@ -139,15 +139,33 @@ namespace windiskhelper
                 Logger.Info("Continuing");
             }
 
+            // Whitelisted device models, if specified
+            List<string> model_whitelist = null;
+            if (Args["model_whitelist"] != null)
+            {
+                model_whitelist = new List<string>(
+                    Args["model_whitelist"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries)
+                );
+            }
+
+            // Blacklisted device models, if specified
+            List<string> model_blacklist = null;
+            if (Args["model_blacklist"] != null)
+            {
+                model_blacklist = new List<string>(
+                    Args["model_blacklist"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries)
+                );
+            }
+
             // Initialize the initiator object for remote or local connection
             MicrosoftInitiator msinit = null;
             if (Args["client_ip"] != null)
             {
-                msinit = new MicrosoftInitiator(Args["client_ip"], Args["username"], Args["password"]);
+                msinit = new MicrosoftInitiator(Args["client_ip"], Args["username"], Args["password"], model_blacklist, model_whitelist);
             }
             else
             {
-                msinit = new MicrosoftInitiator();
+                msinit = new MicrosoftInitiator(model_blacklist, model_whitelist);
             }
 
             // CHAP info, if it was specified
@@ -401,7 +419,7 @@ namespace windiskhelper
 
                     if (logged_in > 0)
                     {
-                        Logger.Info("Onlining/signaturing all disks");
+                        Logger.Info("Onlining/signaturing disks");
                         msinit.OnlineDisks();
                     }
                     Logger.Info("Successfully logged in to targets");
@@ -496,7 +514,7 @@ namespace windiskhelper
 
                     if (logged_in > 0)
                     {
-                        Logger.Info("Onlining/signaturing all disks");
+                        Logger.Info("Onlining/signaturing disks");
                         msinit.OnlineDisks();
                     }
                 }
@@ -1058,10 +1076,11 @@ namespace windiskhelper
             }
             else if (Args["enable_mpio"] != null)
             {
+                string device_string = Args["device_string"];
                 bool reboot_required = false;
                 try
                 {
-                    reboot_required = msinit.EnableMpio(Args["device_string"]);
+                    reboot_required = msinit.EnableMpio(device_string);
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
                 {
@@ -1084,10 +1103,11 @@ namespace windiskhelper
             }
             else if (Args["disable_mpio"] != null)
             {
+                string device_string = Args["device_string"];
                 bool reboot_required = false;
                 try
                 {
-                    reboot_required = msinit.DisableMpio(Args["device_string"]);
+                    reboot_required = msinit.DisableMpio(device_string);
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
                 {
@@ -1277,13 +1297,14 @@ namespace windiskhelper
             Console.WriteLine("                        volumes");
             Console.WriteLine("  --set_lb_policy       Set the MPIO load balancing policy for MPIO volumes.");
             Console.WriteLine("                        Requires policy, optionally include devices");
-            Console.WriteLine("  --list_paths          Display the list of volumes and their paths");
+            Console.WriteLine("  --list_paths          Display the list of volumes and their paths.");
             Console.WriteLine("                        Optionally include detail");
             Console.WriteLine("  --verify_paths        Verify the correct number of volumes and paths per");
             Console.WriteLine("                        volume are present and healthy. Requires volume_count");
             Console.WriteLine("                        and paths_per_volume");
             Console.WriteLine();
             Console.WriteLine("MPIO Options:");
+            Console.WriteLine("  --device_string       Add/remove this device string to MPIO");
             Console.WriteLine("  --detail              Show more information in JSON output");
             Console.WriteLine("  --policy              The load balance policy to set");
             Console.WriteLine("  --devices             Only operate on this list of devices (device names e.g.");
@@ -1303,10 +1324,10 @@ namespace windiskhelper
             Console.WriteLine("                        Optionally include devices");
             Console.WriteLine("  --format_disks        Create partitions and format the devices from logged");
             Console.WriteLine("                        in targets. Optionally include portal_address,");
-            Console.WriteLine("                        devices, relabel, force_mountpoints");
+            Console.WriteLine("                        devices, force_mountpoints");
             Console.WriteLine("  --setup_disks         Create partitions, format and mount the devices from");
             Console.WriteLine("                        logged in targets. Optionally include portal_address,");
-            Console.WriteLine("                        devices, relabel, force_mountpoints");
+            Console.WriteLine("                        devices, force_mountpoints");
             Console.WriteLine("  --unmount_disks       Remove mount points and drive letters from logged in");
             Console.WriteLine("                        targets. Optionally include devices");
             Console.WriteLine("  --dump_disk_info      Print out as much information as possible about the");
@@ -1323,7 +1344,9 @@ namespace windiskhelper
             Console.WriteLine("  --devices             Only operate on this list of devices (device names e.g.");
             Console.WriteLine("                        \"\\\\.\\PhysicalDrive2, \\\\.\\PhysicalDrive3\"");
             Console.WriteLine("  --relabel             Update the volume label on existing partitions to match");
-            Console.WriteLine("                        the IQN of the volume");
+            Console.WriteLine("                        the name of the iSCSI volume");
+            Console.WriteLine("  --model_whitelist     Only operate on disk devices with these model strings");
+            Console.WriteLine("  --model_blacklist     Ignore any disk devices with these model strings");
             Console.WriteLine("  --force_mountpoints   Remove automount drive letters and remount with mount");
             Console.WriteLine("                        points");
             Console.WriteLine("  --force_unmount       Forcibly unmount volumes before logging out of targets");
@@ -1389,7 +1412,6 @@ namespace windiskhelper
                 "persistent",
                 "name",
                 "force_mountpoints",
-                "relabel",
                 "force_unmount",
                 "dump_disk_info",
                 "dump_vds_prov_info",
@@ -1419,6 +1441,7 @@ namespace windiskhelper
                 "paths_per_volume",
                 "volume_count",
                 "detail",
+                "device_string",
             };
 
             // Check for extra/misspelled args
@@ -1723,6 +1746,10 @@ namespace windiskhelper
                     Console.Error.WriteLine("paths_per_volume must be a positive integer");
                     return false;
                 }
+            }
+            if (Args["enable_mpio"] != null || Args["disable_mpio"] != null)
+            {
+                return CheckRequiredArgsWithValues(Args, new List<string>() { "device_string" });
             }
             
 

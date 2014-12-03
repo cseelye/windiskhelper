@@ -19,30 +19,37 @@ namespace windiskhelper
 {
     class MicrosoftInitiator
     {
-        static readonly List<string> BLACKLISTED_MODELS = new List<string>()
+        static readonly List<string> DEFAULT_BLACKLISTED_MODELS = new List<string>()
         {
             "vmware",
             "idrac"
         };
+        static readonly List<string> DEFAULT_WHITELISTED_MODELS = new List<string>();
 
-        public MicrosoftInitiator()
+        private List<string> mBlacklistedDiskModels;
+        private List<string> mWhitelistedDiskModels;
+
+        public MicrosoftInitiator(List<string> BlacklistedDiskModels = null, List<string> WhitelistedDiskModels = null)
         {
-            mClientHostname = "localhost";
+            if (BlacklistedDiskModels != null && BlacklistedDiskModels.Count() > 0)
+                mBlacklistedDiskModels = BlacklistedDiskModels;
+            else
+                mBlacklistedDiskModels = DEFAULT_BLACKLISTED_MODELS;
 
-            //Logger.Info("Connecting to local system");
-            //ConnectWmiScope(@"root\wmi");
-            //mVdsService = ConnectVdsService();
+            if (WhitelistedDiskModels != null && WhitelistedDiskModels.Count() > 0)
+                mWhitelistedDiskModels = WhitelistedDiskModels;
+            else
+                mWhitelistedDiskModels = DEFAULT_WHITELISTED_MODELS;
+
+            mClientHostname = "localhost";
         }
 
-        public MicrosoftInitiator(string Hostname, string Username, string Password)
+        public MicrosoftInitiator(string Hostname, string Username, string Password, List<string> BlacklistedDiskModels = null, List<string> WhitelistedDiskModels = null)
+            : this(BlacklistedDiskModels, WhitelistedDiskModels)
         {
             mClientHostname = Hostname;
             mClientUsername = Username;
             mClientPassword = Password;
-
-            //Logger.Info("Connecting to " + pHostname);
-            //ConnectWmiScope(@"root\wmi");
-            //mVdsService = ConnectVdsService();
         }
 
         #region Infrastructure for remote connections/impersonation
@@ -1730,9 +1737,14 @@ namespace windiskhelper
                 // Make sure this pack contains disks that meet the filter criteria
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    // Skip disks that have been deleted but not cleaned up yet
-                    if (!IsStillAttached(disk))
+                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
+                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
+                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
+                                                                        // Skip disks that have been deleted but not cleaned up yet
+                    {
+                        Logger.Debug("Skipping device " + dev_name);
                         break;
+                    }
 
                     dev_name = disk.Name.Replace("?", ".");
                     if (filter_devices && !DeviceList.Contains(dev_name))
@@ -1816,6 +1828,48 @@ namespace windiskhelper
             }
         }
 
+        private bool IsWhitelisted(Disk VdsDisk)
+        {
+            return IsWhitelisted(VdsDisk.DevicePath);
+        }
+
+        private bool IsWhitelisted(string DiskModel)
+        {
+            // No specific whitelist means every model is whitelisted
+            if (mWhitelistedDiskModels.Count() <= 0)
+                return true;
+
+            foreach (string white in mWhitelistedDiskModels)
+            {
+                if (DiskModel.ToLower().Contains(white.ToLower()))
+                    return true;
+            }
+            return false;
+        }
+
+        private bool IsBlacklisted(Disk VdsDisk)
+        {
+            return IsBlacklisted(VdsDisk.DevicePath);
+        }
+
+        private bool IsBlacklisted(string DiskModel)
+        {
+            // Whitelist takes priority
+            if (!IsWhitelisted(DiskModel))
+                return true;
+
+            // No specific blacklist means no models are blacklisted
+            if (mBlacklistedDiskModels.Count() <= 0)
+                return false;
+
+            foreach (string black in mBlacklistedDiskModels)
+            {
+                if (DiskModel.ToLower().Contains(black))
+                    return true;
+            }
+            return false;
+        }
+
         /// <summary>
         /// Unmount volumes and take disk devices offline
         /// </summary>
@@ -1846,14 +1900,17 @@ namespace windiskhelper
                 bool skip = false;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    // Skip disks that have been deleted but not cleaned up yet
-                    if (!IsStillAttached(disk))
+                    dev_name = disk.Name.Replace("?", ".");
+
+                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
+                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
+                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
                     {
+                        Logger.Debug("Skipping device " + dev_name);
                         skip = true;
                         break;
                     }
 
-                    dev_name = disk.Name.Replace("?", ".");
                     if (filter_devices && !DeviceList.Contains(dev_name))
                     {
                         skip = true;
@@ -1863,11 +1920,6 @@ namespace windiskhelper
                     {
                         skip = true;
                         break;
-                    }
-                    if (IsSystemDisk(disk))
-                    {
-                        Logger.Debug("Skipping device " + dev_name + " because it is a system disk");
-                        skip = true;
                     }
                     break;
                 }
@@ -1945,15 +1997,17 @@ namespace windiskhelper
             bool refresh_needed = false;
             foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
             {
-                // Skip disks that have been deleted but not cleaned up yet
-                if (!IsStillAttached(disk))
-                    continue;
-
-                // Skip system disks
-                if (IsSystemDisk(disk))
-                    continue;
-
                 string dev_name = disk.Name.Replace("?", ".");
+
+                if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
+                    IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
+                    !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
+                                                                    // Skip disks that have been deleted but not cleaned up yet
+                {
+                    Logger.Debug("Skipping device " + dev_name);
+                    continue;
+                }
+
                 if (filter_devices && !DeviceList.Contains(dev_name))
                     continue;
                 if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
@@ -1998,6 +2052,15 @@ namespace windiskhelper
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
                     string dev_name = disk.Name.Replace("?", ".");
+
+                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
+                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
+                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
+                    {
+                        Logger.Debug("Skipping device " + dev_name);
+                        continue;
+                    }
+
                     if (filter_devices && !DeviceList.Contains(dev_name))
                         continue;
                     if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
@@ -2058,26 +2121,30 @@ namespace windiskhelper
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
 
-            // Find all disks in all disk packs and make sure they are partitioned, formatted and mounted
+            // Find all appropriate disks in all disk packs and make sure they are partitioned, formatted and mounted
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                bool found_disks = false;
+                bool selected_disk = false;
                 string volume_label = "";
                 string volume_name = "";
                 string dev_name = "";
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
-                    // Skip disks that have been deleted but not cleaned up yet
-                    if (!IsStillAttached(disk))
-                        break;
-
                     dev_name = disk.Name.Replace("?", ".");
+                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
+                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
+                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
+                    {
+                        Logger.Debug("Skipping device " + dev_name);
+                        continue;
+                    }
+
                     if (filter_devices && !DeviceList.Contains(dev_name))
                         break;
                     if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
                         break;
 
-                    found_disks = true;
+                    selected_disk = true;
 
                     // Partition and format the disk if it isn't already
                     if (disk.Partitions.Count <= 0)
@@ -2144,7 +2211,7 @@ namespace windiskhelper
                     // Assume only a single disk per pack (simple volumes)
                     break;
                 }
-                if (!found_disks)
+                if (!selected_disk)
                     continue;
 
                 // Go through all volumes and make sure they are mounted
@@ -2158,7 +2225,7 @@ namespace windiskhelper
 
                     if (RelabelVolumes)
                     {
-                        // Verify that the volume label is the same as the IQN name, and relabel as necessary
+                        // Verify that the volume label is the same as the volume name, and relabel as necessary
                         // This is most relevant when cloning a volume
                         if (vol.Label != volume_label)
                         {
@@ -2223,10 +2290,18 @@ namespace windiskhelper
                 bool match = false;
                 string dev_name = "";
 
-                // Make sure this pack contains disks that meet the filter criteria
+                // Make sure this pack contains appropriate disks that meet the filter criteria
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
                     dev_name = disk.Name.Replace("?", ".");
+                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
+                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
+                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
+                    {
+                        Logger.Debug("Skipping device " + dev_name);
+                        break;
+                    }
+
                     if (filter_devices && !DeviceList.Contains(dev_name))
                         break;
                     if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
@@ -2423,8 +2498,19 @@ namespace windiskhelper
 					}
 				}
                 foreach (SoftwareProvider prov in provider_list)
-				{
-					foreach (Pack disk_pack in prov.Packs)
+                {
+                    foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
+                    {
+                        // VDS seems to randomly return an empty string for the FriendlyName if you have more than a handful of volumes, so this is not reliable.
+                        // Instead we made a list of expected devices up above from the list of active iSCSI sessions and look for each of those devices here
+                        string dev_name = disk.Name.Replace('?', '.');
+                        if (expected_devices.Contains(dev_name))
+                        {
+                            found_devices.Add(dev_name);
+                            continue;
+                        }
+                    }
+                    foreach (Pack disk_pack in prov.Packs)
                     {
                         foreach (AdvancedDisk disk in disk_pack.Disks)
                         {
@@ -3072,8 +3158,11 @@ namespace windiskhelper
                         Logger.Debug(disk["DeviceID"] + " has a null model");
                     }
 
-                    if (model != null && BLACKLISTED_MODELS.Contains(model.ToLower()))
+                    // Skip disks based on whitelist/blacklist
+                    if (model != null && (!IsWhitelisted(model) || IsBlacklisted(model)))
+                    {
                         continue;
+                    }
 
                     string sernum = disk["SerialNumber"] as String;
                     if (sernum == null)
@@ -3093,6 +3182,7 @@ namespace windiskhelper
 
                 devid2serial.Clear();
 
+                // Give up after 5 minutes
                 if ((DateTime.Now - start_time).TotalSeconds > 300)
                     throw new InitiatorException("Could not query disk info from WMI");
 
@@ -3129,7 +3219,8 @@ namespace windiskhelper
         }
 
         /// <summary>
-        /// Map a VDS disk object to a DiskInfo object.  Returns null of the disk is a system volume, or (optionally) doesn't match the list of targets passed in
+        /// Map a VDS disk object to a DiskInfo object.  Returns null if the disk is not an appropriate device,
+        /// not a system volume, or (optionally) doesn't match the list of targets passed in
         /// </summary>
         /// <param name="VdsDisk">The VDS disk</param>
         /// <param name="IscsiSessions">The list of current iSCSI sessions</param>
@@ -3139,6 +3230,13 @@ namespace windiskhelper
         {
             // Skip disks that have been deleted but not cleaned up yet
             if (!IsStillAttached(VdsDisk))
+                return null;
+
+            // Skip this disk if it is not an appropriate device
+            if (!IsWhitelisted(VdsDisk.FriendlyName) || IsBlacklisted(VdsDisk.FriendlyName))
+                return null;
+            // VDS sometimes gets into a state where the FriendlyName it returns is an empty string, so we check the device path as well
+            if (!IsWhitelisted(VdsDisk.DevicePath) || IsBlacklisted(VdsDisk.DevicePath))
                 return null;
 
             bool filter_iscsi = MatchIscsiTargets != null && MatchIscsiTargets.Count > 0;
@@ -3526,7 +3624,10 @@ namespace windiskhelper
             foreach (var disk in dsm_disk_list)
             {
                 string instance_name = disk["InstanceName"] as String;
-                dsm_disks.Add(instance_name, disk);
+                if (IsWhitelisted(instance_name) && !IsBlacklisted(instance_name))
+                {
+                    dsm_disks.Add(instance_name, disk);
+                }
             }
 
             foreach (MpioDiskInfoDetailed mpio_disk_info in disks_to_return)
@@ -3627,13 +3728,13 @@ namespace windiskhelper
         }
 
         /// <summary>
-        /// Enable the MPIO feature, and add a device string to the MS DSM
+        /// Enable the MPIO feature, and add the device string to the MS DSM
         /// The return value indicates if a reboot is required
         /// </summary>
         /// <returns></returns>
-        public bool EnableMpio(string pDeviceString)
+        public bool EnableMpio(string DeviceString)
         {
-            Logger.Info("Enabling MPIO for device string " + pDeviceString);
+            Logger.Info("Enabling MPIO for '" + DeviceString + "' devices");
             bool reboot_required = false;
 
             //
@@ -3684,7 +3785,7 @@ namespace windiskhelper
             }
 
             //
-            // Make sure the devices are added to the MS DSM
+            // Make sure the specified devices are added to the MS DSM
             //
             bool registered = false;
 
@@ -3697,7 +3798,7 @@ namespace windiskhelper
             }
             foreach (string line in Regex.Split(res.Stdout, "\n"))
             {
-                if (line.Contains(pDeviceString))
+                if (line.Contains(DeviceString))
                 {
                     registered = true;
                     break;
@@ -3708,7 +3809,7 @@ namespace windiskhelper
             if (!registered)
             {
                 reboot_required = true;
-                cmd = "mpclaim.exe -n -i -d \"" + pDeviceString + "\"";
+                cmd = "mpclaim.exe -n -i -d \"" + DeviceString + "\"";
                 res = RunCommand(cmd);
                 if (res.ExitCode != 0)
                 {
@@ -3721,16 +3822,15 @@ namespace windiskhelper
                 reboot_required = true;
 
             return reboot_required;
-        }
 
         /// <summary>
-        /// Remove the a device string from the MS DSM
+        /// Remove the specified device string from the MS DSM
         /// The return value indicates if a reboot is required
         /// </summary>
         /// <returns></returns>
-        public bool DisableMpio(string pDeviceString)
+        public bool DisableMpio(string DeviceString)
         {
-            Logger.Info("Disabling MPIO for device string " + pDeviceString);
+            Logger.Info("Disabling MPIO for '" + DeviceString + "' devices");
             bool reboot_required = false;
 
             //
@@ -3747,7 +3847,7 @@ namespace windiskhelper
             }
             foreach (string line in Regex.Split(res.Stdout, "\n"))
             {
-                if (line.Contains(pDeviceString))
+                if (line.Contains(DeviceString))
                 {
                     registered = true;
                     break;
@@ -3758,7 +3858,7 @@ namespace windiskhelper
             if (registered)
             {
                 reboot_required = true;
-                cmd = "mpclaim.exe -n -u -d \"" + pDeviceString + "\"";
+                cmd = "mpclaim.exe -n -u -d \"" + DeviceString + "\"";
                 res = RunCommand(cmd);
                 if (res.ExitCode != 0)
                 {
