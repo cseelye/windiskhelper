@@ -19,6 +19,12 @@ namespace windiskhelper
 {
     class MicrosoftInitiator
     {
+        static readonly List<string> BLACKLISTED_MODELS = new List<string>()
+        {
+            "vmware",
+            "idrac"
+        };
+
         public MicrosoftInitiator()
         {
             mClientHostname = "localhost";
@@ -3066,8 +3072,7 @@ namespace windiskhelper
                         Logger.Debug(disk["DeviceID"] + " has a null model");
                     }
 
-                    // Check for VMware disks and skip
-                    if (model != null && model.ToLower().Contains("vmware"))
+                    if (model != null && BLACKLISTED_MODELS.Contains(model.ToLower()))
                         continue;
 
                     string sernum = disk["SerialNumber"] as String;
