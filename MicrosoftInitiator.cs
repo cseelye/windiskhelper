@@ -2339,6 +2339,16 @@ namespace windiskhelper
                     Logger.Info("Allocated disk\n" + ObjectDumper.ObjectDumperExtensions.DumpToString<AdvancedDisk>(disk, "disk"));
                 }
             }
+            Logger.Info("==========================   Dumping Win32_DiskDrive database  ==========================");
+            ManagementObjectCollection wmi_disk_list = DoWmiQuery("SELECT * FROM Win32_DiskDrive", @"root\cimv2");
+            foreach (var disk in wmi_disk_list)
+            {
+                Logger.Info("Disk " + disk["Name"]);
+                foreach (PropertyData prop in disk.Properties)
+                {
+                    Logger.Info("  " + prop.Name + " = " + prop.Value);
+                }
+            }
         }
 
         /// <summary>
