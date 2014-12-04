@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Management;
-using System.Diagnostics;
 using Microsoft.Storage.Vds;
 using Microsoft.Storage.Vds.Advanced;
 using System.Runtime.InteropServices;
@@ -13,7 +12,6 @@ using System.Text;
 using System.ComponentModel;
 
 using System.Security.Principal; // WindowsImpersonationContext
-using System.Security.Permissions; // PermissionSetAttribute
 
 namespace windiskhelper
 {
