@@ -10,23 +10,33 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Text;
 using System.ComponentModel;
-
-using System.Security.Principal; // WindowsImpersonationContext
+using System.Security.Principal;
 
 namespace windiskhelper
 {
     class MicrosoftInitiator
     {
+        /// <summary>
+        /// The default list of blacklisted disk models
+        /// </summary>
         static readonly List<string> DEFAULT_BLACKLISTED_MODELS = new List<string>()
         {
             "vmware",
             "idrac"
         };
+        /// <summary>
+        /// The default list of whitelisted disk models
+        /// </summary>
         static readonly List<string> DEFAULT_WHITELISTED_MODELS = new List<string>();
 
         private List<string> mBlacklistedDiskModels;
         private List<string> mWhitelistedDiskModels;
 
+        /// <summary>
+        /// Create a MicrosoftInitiator object for the local system
+        /// </summary>
+        /// <param name="BlacklistedDiskModels">The list of disk models to blacklist</param>
+        /// <param name="WhitelistedDiskModels">The list of disk models to whitelist</param>
         public MicrosoftInitiator(List<string> BlacklistedDiskModels = null, List<string> WhitelistedDiskModels = null)
         {
             if (BlacklistedDiskModels != null && BlacklistedDiskModels.Count() > 0)
@@ -42,6 +52,14 @@ namespace windiskhelper
             mClientHostname = "localhost";
         }
 
+        /// <summary>
+        /// Create a MicrosoftInitiator object to control a remote system
+        /// </summary>
+        /// <param name="Hostname">The resolvable FQDN or IP address of the remote system</param>
+        /// <param name="Username">A username for the remote system with admin priviliges</param>
+        /// <param name="Password">The password for the remote system</param>
+        /// <param name="BlacklistedDiskModels">The list of disk models to blacklist</param>
+        /// <param name="WhitelistedDiskModels">The list of disk models to whitelist</param>
         public MicrosoftInitiator(string Hostname, string Username, string Password, List<string> BlacklistedDiskModels = null, List<string> WhitelistedDiskModels = null)
             : this(BlacklistedDiskModels, WhitelistedDiskModels)
         {
@@ -73,6 +91,7 @@ namespace windiskhelper
             SecurityImpersonation = 2,
             SecurityDelegation = 3
         }
+
         public enum LogonType
         {
             /// <summary>
