@@ -1826,11 +1826,21 @@ namespace windiskhelper
             }
         }
 
+        /// <summary>
+        /// Test if this disk is whitelisted.  If the whitelist is empty, then all disks are considered whitelisted
+        /// </summary>
+        /// <param name="VdsDisk">The disk to test</param>
+        /// <returns>True if the disk is whitelisted, false otherwise</returns>
         private bool IsWhitelisted(Disk VdsDisk)
         {
             return IsWhitelisted(VdsDisk.DevicePath);
         }
 
+        /// <summary>
+        /// Test if this disk is whitelisted.  If the whitelist is empty, then all disks are considered whitelisted
+        /// </summary>
+        /// <param name="DiskModel">The model string of the disk</param>
+        /// <returns>True if the disk is whitelisted, false otherwise</returns>
         private bool IsWhitelisted(string DiskModel)
         {
             // No specific whitelist means every model is whitelisted
@@ -1845,11 +1855,23 @@ namespace windiskhelper
             return false;
         }
 
+        /// <summary>
+        /// Test if this disk is blacklisted.  If the blacklist is empty, then no disks are blacklisted.
+        /// The whitelist takes priority over the blacklist; if a disk is not whitelisted, then it is considered blacklisted
+        /// </summary>
+        /// <param name="VdsDisk">The disk to test</param>
+        /// <returns>True if the disk is blacklisted, false otherwise</returns>
         private bool IsBlacklisted(Disk VdsDisk)
         {
             return IsBlacklisted(VdsDisk.DevicePath);
         }
 
+        /// <summary>
+        /// Test if this disk is blacklisted.  If the blacklist is empty, then no disks are blacklisted.
+        /// The whitelist takes priority over the blacklist; if a disk is not whitelisted, then it is considered blacklisted
+        /// </summary>
+        /// <param name="DiskModel">The model string of the disk</param>
+        /// <returns>True if the disk is blacklisted, false otherwise</returns>
         private bool IsBlacklisted(string DiskModel)
         {
             // Whitelist takes priority
@@ -3867,6 +3889,12 @@ namespace windiskhelper
             return reboot_required;
         }
 
+        /// <summary>
+        /// Test if the current number of volumes and current number of paths per volume meets the expected numbers
+        /// </summary>
+        /// <param name="ExpectedVolumeCount">The total number of expected volumes</param>
+        /// <param name="ExpectedPathsPerVolume">The number of paths per volume</param>
+        /// <returns>True if both criteria are met, false otherwise</returns>
         public bool VerifyPaths(int ExpectedVolumeCount, int ExpectedPathsPerVolume)
         {
             bool ret = true;
