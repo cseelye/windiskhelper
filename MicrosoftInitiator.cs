@@ -3872,30 +3872,33 @@ namespace windiskhelper
             bool ret = true;
 
             List<MpioDiskInfoDetailed> volumes = ListMpioDiskInfo();
-            if (volumes.Count < ExpectedVolumeCount)
+            if (volumes.Count == ExpectedVolumeCount)
             {
-                Logger.Error("Expected " + ExpectedVolumeCount + " but found " + volumes.Count + " volumes");
-                ret = false;
+                Logger.Info("Found the expected number of volumes");
             }
             else
             {
-                Logger.Info("Found the expected number of volumes");
+                Logger.Error("Expected " + ExpectedVolumeCount + " volumes but found " + volumes.Count + " volumes");
+                ret = false;
             }
 
             bool allgood = true;
             foreach (var vol in volumes)
             {
-                if (vol.DSM_Paths.Count < ExpectedPathsPerVolume)
+                if (vol.DSM_Paths.Count != ExpectedPathsPerVolume)
                 {
-                    Logger.Error("Volume " + vol.LegacyDeviceName + " has " + vol.DSM_Paths.Count + " paths but expected " + ExpectedPathsPerVolume);
+                    Logger.Error("Volume " + vol.LegacyDeviceName + " has " + vol.DSM_Paths.Count + " total paths but expected " + ExpectedPathsPerVolume + " total paths");
                     allgood = false;
                     ret = false;
+                    continue;
                 }
-                if (vol.DSM_Paths.Count - vol.FailedPathCount < ExpectedPathsPerVolume)
+
+                if (vol.DSM_Paths.Count - vol.FailedPathCount != ExpectedPathsPerVolume)
                 {
-                    Logger.Error("Volume " + vol.LegacyDeviceName + " has " + (vol.DSM_Paths.Count - vol.FailedPathCount) + " healthy paths but expected " + ExpectedPathsPerVolume + " (" + vol.DSM_Paths.Count + " total paths, " + vol.FailedPathCount + " failed paths)");
+                    Logger.Error("Volume " + vol.LegacyDeviceName + " has " + (vol.DSM_Paths.Count - vol.FailedPathCount) + " healthy paths but expected " + ExpectedPathsPerVolume + " healthy paths (" + vol.DSM_Paths.Count + " total paths, " + vol.FailedPathCount + " failed paths)");
                     allgood = false;
                     ret = false;
+                    continue;
                 }
                 if (vol.FailedPathCount > 0 && vol.DSM_Paths.Count - vol.FailedPathCount >= ExpectedPathsPerVolume)
                 {
