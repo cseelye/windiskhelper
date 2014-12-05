@@ -217,7 +217,7 @@ namespace windiskhelper
                     else
                         Logger.Info("Adding portal '" + arg_portal_list[0] + "'");
 
-                    msinit.AddTargetPortal(PortalAddress: arg_portal_list[0], ChapUsername: arg_chap_user, ChapInitSecret: arg_chap_init_secret, ChapTargSecret: arg_chap_targ_secret);
+                    msinit.AddTargetPortal(portalAddress: arg_portal_list[0], chapUsername: arg_chap_user, chapInitSecret: arg_chap_init_secret, chapTargSecret: arg_chap_targ_secret);
                     
                     Logger.Info("Successfully added portal.");
                 }
@@ -333,7 +333,7 @@ namespace windiskhelper
                 List<MicrosoftInitiator.IscsiTargetInfo> target_list = new List<MicrosoftInitiator.IscsiTargetInfo>();
                 try
                 {
-                    target_list = msinit.ListIscsiTargets(PortalAddressList: arg_portal_list, IncludeBootVolume: include_boot);
+                    target_list = msinit.ListIscsiTargets(portalAddressList: arg_portal_list, includeBootVolume: include_boot);
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
                 {
@@ -370,7 +370,7 @@ namespace windiskhelper
                 List<MicrosoftInitiator.IscsiSessionInfo> session_list = new List<MicrosoftInitiator.IscsiSessionInfo>();
                 try
                 {
-                    session_list = msinit.ListIscsiSessions(PortalAddressList: arg_portal_list, IncludeBootVolume: include_boot);
+                    session_list = msinit.ListIscsiSessions(portalAddressList: arg_portal_list, includeBootVolume: include_boot);
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
                 {
@@ -415,7 +415,7 @@ namespace windiskhelper
                 try
                 {
                     Logger.Info(statement);
-                    int logged_in = msinit.LoginIscsiTargets(ChapUsername: arg_chap_user, ChapInitSecret: arg_chap_init_secret, ChapTargSecret: arg_chap_targ_secret, PortalAddressList: arg_portal_list, TargetsToLogin: arg_target_iqns, MakePersistent: persistent);
+                    int logged_in = msinit.LoginIscsiTargets(chapUsername: arg_chap_user, chapInitSecret: arg_chap_init_secret, chapTargSecret: arg_chap_targ_secret, portalAddressList: arg_portal_list, targetsToLogin: arg_target_iqns, makePersistent: persistent);
 
                     if (logged_in > 0)
                     {
@@ -456,7 +456,7 @@ namespace windiskhelper
                 Logger.Info(statement);
                 try
                 {
-                    msinit.AddTargetPortal(PortalAddress: arg_portal_list[0], ChapUsername: arg_chap_user, ChapInitSecret: arg_chap_init_secret, ChapTargSecret: arg_chap_targ_secret);
+                    msinit.AddTargetPortal(portalAddress: arg_portal_list[0], chapUsername: arg_chap_user, chapInitSecret: arg_chap_init_secret, chapTargSecret: arg_chap_targ_secret);
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
                 {
@@ -510,7 +510,7 @@ namespace windiskhelper
                 Logger.Info(statement);
                 try
                 {
-                    int logged_in = msinit.LoginIscsiTargets(ChapUsername: arg_chap_user, ChapInitSecret: arg_chap_init_secret, ChapTargSecret: arg_chap_targ_secret, PortalAddressList: new List<string>() { arg_portal_list[0] }, TargetsToLogin: arg_target_iqns, MakePersistent: persistent);
+                    int logged_in = msinit.LoginIscsiTargets(chapUsername: arg_chap_user, chapInitSecret: arg_chap_init_secret, chapTargSecret: arg_chap_targ_secret, portalAddressList: new List<string>() { arg_portal_list[0] }, targetsToLogin: arg_target_iqns, makePersistent: persistent);
 
                     if (logged_in > 0)
                     {
@@ -556,8 +556,8 @@ namespace windiskhelper
                 try
                 {
                     if (force)
-                        msinit.UnmountAndOfflineDisks(PortalAddressList: arg_portal_list, TargetList: arg_target_iqns, ForceUnmount: true);
-                    msinit.LogoutIscsiTargets(PortalAddressList: arg_portal_list, TargetsToLogout: arg_target_iqns, RemovePersistent: remove_persistent);
+                        msinit.UnmountAndOfflineDisks(portalAddressList: arg_portal_list, targetList: arg_target_iqns, forceUnmount: true);
+                    msinit.LogoutIscsiTargets(portalAddressList: arg_portal_list, targetsToLogout: arg_target_iqns, removePersistent: remove_persistent);
 
                     Logger.Info("Successfully logged out of targets.");
                 }
@@ -575,7 +575,7 @@ namespace windiskhelper
                 List<MicrosoftInitiator.DiskInfoDetailed> disk_list = new List<MicrosoftInitiator.DiskInfoDetailed>();
                 try
                 {
-                    disk_list = msinit.ListDiskInfo(PortalAddressList: arg_portal_list);
+                    disk_list = msinit.ListDiskInfo(portalAddressList: arg_portal_list);
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
                 {
@@ -674,7 +674,7 @@ namespace windiskhelper
 
                 try
                 {
-                    msinit.OnlineDisks(DeviceList: arg_device_list, PortalAddressList: arg_portal_list, TargetList: arg_target_iqns);
+                    msinit.OnlineDisks(deviceList: arg_device_list, portalAddressList: arg_portal_list, targetList: arg_target_iqns);
                     Logger.Info("Successfully onlined disks");
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
@@ -707,8 +707,9 @@ namespace windiskhelper
                 
                 try
                 {
-                    msinit.PartitionAndFormatDisks(DeviceList: arg_device_list, PortalAddressList: arg_portal_list, TargetList: arg_target_iqns, RelabelVolumes: relabel);
-                    msinit.MountpointDisks(DeviceList: arg_device_list, PortalAddressList: arg_portal_list, TargetList: arg_target_iqns, ForceMountPoints: force_mountpoints);
+                    msinit.PartitionAndFormatDisks(deviceList: arg_device_list, portalAddressList: arg_portal_list, targetList: arg_target_iqns, relabelVolumes: relabel);
+                    msinit.MountpointDisks(deviceList: arg_device_list, portalAddressList: arg_portal_list, targetList: arg_target_iqns, forceMountPoints: force_mountpoints);
+
                     Logger.Info("Successfully set up disks");
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
@@ -738,7 +739,8 @@ namespace windiskhelper
 
                 try
                 {
-                    msinit.PartitionAndFormatDisks(DeviceList: arg_device_list, PortalAddressList: arg_portal_list, TargetList: arg_target_iqns, RelabelVolumes: relabel);
+                    msinit.PartitionAndFormatDisks(deviceList: arg_device_list, portalAddressList: arg_portal_list, targetList: arg_target_iqns, relabelVolumes: relabel);
+
                     Logger.Info("Successfully formatted disks");
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
@@ -764,7 +766,8 @@ namespace windiskhelper
 
                 try
                 {
-                    msinit.RemoveMountpoints(DeviceList: arg_device_list, PortalAddressList: arg_portal_list, TargetList: arg_target_iqns);
+                    msinit.RemoveMountpoints(deviceList: arg_device_list, portalAddressList: arg_portal_list, targetList: arg_target_iqns);
+
                     Logger.Info("Successfully removed mounts");
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
@@ -842,7 +845,7 @@ namespace windiskhelper
                 try
                 {
                     Logger.Info("Logging out of all active targets");
-                    msinit.LogoutIscsiTargets(RemovePersistent: true);
+                    msinit.LogoutIscsiTargets(removePersistent: true);
                 }
                 catch (MicrosoftInitiator.InitiatorException) { }
 
@@ -1176,7 +1179,7 @@ namespace windiskhelper
                 List<MicrosoftInitiator.DiskInfoDetailed> disk_list = new List<MicrosoftInitiator.DiskInfoDetailed>();
                 try
                 {
-                    disk_list = msinit.ListDiskInfo(PortalAddressList: arg_portal_list);
+                    disk_list = msinit.ListDiskInfo(portalAddressList: arg_portal_list);
                 }
                 catch (MicrosoftInitiator.InitiatorException e)
                 {
@@ -1217,11 +1220,11 @@ namespace windiskhelper
             Environment.Exit(EXIT_SUCCESS);
         }
 
-        static void LogExceptionDetail(MicrosoftInitiator.InitiatorException e)
+        static void LogExceptionDetail(MicrosoftInitiator.InitiatorException ex)
         {
-            Logger.Debug("Error Code: " + e.Message);
-            Logger.Debug(String.Format("HRESULT: 0x{0:X}", e.ErrorCode));
-            Logger.Debug("Exception: " + e.ToString());
+            Logger.Debug("Error Code: " + ex.Message);
+            Logger.Debug(String.Format("HRESULT: 0x{0:X}", ex.ErrorCode));
+            Logger.Debug("Exception: " + ex.ToString());
         }
 
         static void PrintUsage()
@@ -1374,7 +1377,7 @@ namespace windiskhelper
             Console.WriteLine("Currently remote connections only work between domain-joined machines.");
         }
 
-        static bool ValidateArguments(CommandLineArguments Args)
+        static bool ValidateArguments(CommandLineArguments args)
         {
             List<string> known_args = new List<string>() 
             {
@@ -1446,7 +1449,7 @@ namespace windiskhelper
 
             // Check for extra/misspelled args
             bool error = false;
-            foreach (string arg in Args.GetKeys())
+            foreach (string arg in args.GetKeys())
             {
                 if (!known_args.Contains(arg))
                 {
@@ -1456,10 +1459,10 @@ namespace windiskhelper
             }
             if (error) return false;
 
-            if (Args["target_iqn"] != null)
+            if (args["target_iqn"] != null)
             {
                 var target_list = new List<string>(
-                    Args["target_iqn"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries)
+                    args["target_iqn"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries)
                 );
                 target_list.ForEach(x => x.Trim());
                 if (target_list.Count <= 0)
@@ -1470,26 +1473,26 @@ namespace windiskhelper
             }
 
             // Check for required argument combinations
-            if (Args["add_portal"] != null)
+            if (args["add_portal"] != null)
             {
-                if (CheckRequiredArgsWithValues(Args, new List<string>() { "portal_address" }))
+                if (CheckRequiredArgsWithValues(args, new List<string>() { "portal_address" }))
                 {
-                    if (Args["chap_user"] != null)
+                    if (args["chap_user"] != null)
                     {
-                        if (Args["chap_secret"] == null && Args["init_secret"] == null)
+                        if (args["chap_secret"] == null && args["init_secret"] == null)
                         {
                             Console.Error.WriteLine("Missing init_secret");
                             return false;
                         }
                     }
-                    if (Args["chap_secret"] != null || Args["init_secret"] != null)
+                    if (args["chap_secret"] != null || args["init_secret"] != null)
                     {
-                        if (!CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user" }))
+                        if (!CheckRequiredArgsWithValues(args, new List<string>() { "chap_user" }))
                             return false;
                     }
-                    if (Args["targ_secret"] != null)
+                    if (args["targ_secret"] != null)
                     {
-                        if (!CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user", "init_secret" }))
+                        if (!CheckRequiredArgsWithValues(args, new List<string>() { "chap_user", "init_secret" }))
                             return false;
                     }
                 }
@@ -1499,57 +1502,57 @@ namespace windiskhelper
                 }
                 return true;
             }
-            else if (Args["remove_portal"] != null)
+            else if (args["remove_portal"] != null)
             {
-                if (!CheckRequiredArgsWithValues(Args, new List<string>() { "portal_address" }))
+                if (!CheckRequiredArgsWithValues(args, new List<string>() { "portal_address" }))
                     return false;
             }
-            else if (Args["login_targets"] != null)
+            else if (args["login_targets"] != null)
             {
-                if (Args["chap_user"] != null)
+                if (args["chap_user"] != null)
                 {
-                    if (Args["chap_secret"] == null && Args["init_secret"] == null)
+                    if (args["chap_secret"] == null && args["init_secret"] == null)
                     {
                         Console.Error.WriteLine("Missing init_secret");
                         return false;
                     }
                 }
-                if (Args["chap_secret"] != null || Args["init_secret"] != null)
+                if (args["chap_secret"] != null || args["init_secret"] != null)
                 {
-                    if (!CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user" }))
+                    if (!CheckRequiredArgsWithValues(args, new List<string>() { "chap_user" }))
                         return false;
                 }
-                if (Args["targ_secret"] != null)
+                if (args["targ_secret"] != null)
                 {
-                    if (!CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user", "init_secret" }))
+                    if (!CheckRequiredArgsWithValues(args, new List<string>() { "chap_user", "init_secret" }))
                         return false;
                 }
             }
-            else if (Args["qlogin"] != null)
+            else if (args["qlogin"] != null)
             {
-                if (CheckRequiredArgsWithValues(Args, new List<string>() { "portal_address" }))
+                if (CheckRequiredArgsWithValues(args, new List<string>() { "portal_address" }))
                 {
-                    if (Args["chap_user"] != null)
+                    if (args["chap_user"] != null)
                     {
-                        if (Args["chap_secret"] == null && Args["init_secret"] == null)
+                        if (args["chap_secret"] == null && args["init_secret"] == null)
                         {
                             Console.Error.WriteLine("Missing init_secret");
                             return false;
                         }
                     }
-                    if (Args["chap_secret"] != null)
+                    if (args["chap_secret"] != null)
                     {
-                        if (!CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user" }))
+                        if (!CheckRequiredArgsWithValues(args, new List<string>() { "chap_user" }))
                             return false;
                     }
-                    if (Args["init_secret"] != null)
+                    if (args["init_secret"] != null)
                     {
-                        if (!CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user" }))
+                        if (!CheckRequiredArgsWithValues(args, new List<string>() { "chap_user" }))
                             return false;
                     }
-                    if (Args["targ_secret"] != null)
+                    if (args["targ_secret"] != null)
                     {
-                        if (!CheckRequiredArgsWithValues(Args, new List<string>() { "chap_user", "init_secret" }))
+                        if (!CheckRequiredArgsWithValues(args, new List<string>() { "chap_user", "init_secret" }))
                             return false;
                     }
                 }
@@ -1558,42 +1561,42 @@ namespace windiskhelper
                     return false;
                 }
             }
-            else if (Args["set_initiatorname"] != null)
+            else if (args["set_initiatorname"] != null)
             {
-                if (!CheckRequiredArgsWithValues(Args, new List<string>() { "name" }))
+                if (!CheckRequiredArgsWithValues(args, new List<string>() { "name" }))
                     return false;
             }
-            else if (Args["set_lb_policy"] != null)
+            else if (args["set_lb_policy"] != null)
             {
-                if (!CheckRequiredArgsWithValues(Args, new List<string>() { "policy" }))
+                if (!CheckRequiredArgsWithValues(args, new List<string>() { "policy" }))
                     return false;
             }
-            if (Args["username"] != null)
+            if (args["username"] != null)
             {
-                if (!CheckRequiredArgsWithValues(Args, new List<string>() { "password" }))
+                if (!CheckRequiredArgsWithValues(args, new List<string>() { "password" }))
                     return false;
             }
-            if (Args["password"] != null)
+            if (args["password"] != null)
             {
-                if (!CheckRequiredArgsWithValues(Args, new List<string>() { "username" }))
+                if (!CheckRequiredArgsWithValues(args, new List<string>() { "username" }))
                     return false;
             }
-            if (Args["enable_mpio"] != null || Args["disable_mpio"] != null)
+            if (args["enable_mpio"] != null || args["disable_mpio"] != null)
             {
-                if (!CheckRequiredArgsWithValues(Args, new List<string>() { "device_string" }))
+                if (!CheckRequiredArgsWithValues(args, new List<string>() { "device_string" }))
                     return false;
 			}
-            if (Args["verify_paths"] != null)
+            if (args["verify_paths"] != null)
             {
-                if (!CheckRequiredArgsWithValues(Args, new List<string>() { "paths_per_volume", "volume_count" }))
+                if (!CheckRequiredArgsWithValues(args, new List<string>() { "paths_per_volume", "volume_count" }))
                     return false;
             }
 
             // Check for valid input
-            if (Args["portal_address"] != null)
+            if (args["portal_address"] != null)
             {
                 List<string> arg_portal_list = new List<string>(
-                    Args["portal_address"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries)
+                    args["portal_address"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries)
                 );
                 if (arg_portal_list.Count <= 0)
                 {
@@ -1618,11 +1621,11 @@ namespace windiskhelper
                     }
                 }
             }
-            if (Args["wait_for_debug"] != null)
+            if (args["wait_for_debug"] != null)
             {
                 try
                 {
-                    int i = int.Parse(Args["wait_for_debug"]);
+                    int i = int.Parse(args["wait_for_debug"]);
                     if (i <= 0)
                         throw new FormatException();
                 }
@@ -1632,40 +1635,40 @@ namespace windiskhelper
                     return false;
                 }
             }
-            if (Args["chap_secret"] != null)
+            if (args["chap_secret"] != null)
             {
-                if (Args["chap_secret"].Length < 12 || Args["chap_secret"].Length > 16)
+                if (args["chap_secret"].Length < 12 || args["chap_secret"].Length > 16)
                 {
                     Console.Error.WriteLine("CHAP initiator secret is invalid length");
                     return false;
                 }
             }
-            if (Args["init_secret"] != null)
+            if (args["init_secret"] != null)
             {
-                if (Args["init_secret"].Length < 12 || Args["init_secret"].Length > 16)
+                if (args["init_secret"].Length < 12 || args["init_secret"].Length > 16)
                 {
                     Console.Error.WriteLine("CHAP initiator secret is invalid length");
                     return false;
                 }
             }
-            if (Args["targ_secret"] != null)
+            if (args["targ_secret"] != null)
             {
-                if (Args["targ_secret"].Length < 12 || Args["targ_secret"].Length > 16)
+                if (args["targ_secret"].Length < 12 || args["targ_secret"].Length > 16)
                 {
                     Console.Error.WriteLine("CHAP target secret is invalid length");
                     return false;
                 }
-                if (Args["targ_secret"].Length > 12)
+                if (args["targ_secret"].Length > 12)
                 {
                     Console.Error.WriteLine("Max CHAP target secret length is 12 when IPsec is not used");
                     return false;
                 }
             }
-            if (Args["client_ip"] != null)
+            if (args["client_ip"] != null)
             {
                 try
                 {
-                    System.Net.IPAddress.Parse(Args["client_ip"]);
+                    System.Net.IPAddress.Parse(args["client_ip"]);
                 }
                 catch (FormatException)
                 {
@@ -1678,18 +1681,18 @@ namespace windiskhelper
                     return false;
                 }
             }
-            if (Args["name"] != null && Args["allow_invalid_iqn"] == null)
+            if (args["name"] != null && args["allow_invalid_iqn"] == null)
             {
-                if (!Regex.IsMatch(Args["name"], @"^iqn.[0-9]{4}-[0-9]{2}.[a-z0-9\.\:-]+$"))
+                if (!Regex.IsMatch(args["name"], @"^iqn.[0-9]{4}-[0-9]{2}.[a-z0-9\.\:-]+$"))
                 {
                     Console.Error.WriteLine("Invalid IQN");
                     return false;
                 }
             }
-            if (Args["target_iqn"] != null)
+            if (args["target_iqn"] != null)
             {
                 List<string> target_list = new List<string>(
-                    Args["target_iqn"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries)
+                    args["target_iqn"].Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries)
                 );
                 target_list.ForEach(x => x.Trim());
 
@@ -1699,7 +1702,7 @@ namespace windiskhelper
                     return false;
                 }
 
-                if (Args["allow_invalid_iqn"] == null)
+                if (args["allow_invalid_iqn"] == null)
                 {
                     foreach (var target_name in target_list)
                     {
@@ -1710,11 +1713,11 @@ namespace windiskhelper
                         }
                     }
                 }
-                if (Args["policy"] != null)
+                if (args["policy"] != null)
                 {
                     try
                     {
-                        Args["policy"].GetEnumValueFromDescription<MicrosoftInitiator.DSM_LB_POLICY>();
+                        args["policy"].GetEnumValueFromDescription<MicrosoftInitiator.DSM_LB_POLICY>();
                     }
                     catch (ArgumentException)
                     {
@@ -1722,11 +1725,11 @@ namespace windiskhelper
                     }
                 }
             }
-            if (Args["verify_paths"] != null)
+            if (args["verify_paths"] != null)
             {
                 try
                 {
-                    int i = int.Parse(Args["volume_count"]);
+                    int i = int.Parse(args["volume_count"]);
                     if (i <= 0)
                         throw new FormatException();
                 }
@@ -1737,7 +1740,7 @@ namespace windiskhelper
                 }
                 try
                 {
-                    int i = int.Parse(Args["paths_per_volume"]);
+                    int i = int.Parse(args["paths_per_volume"]);
                     if (i <= 0)
                         throw new FormatException();
                 }
@@ -1747,21 +1750,21 @@ namespace windiskhelper
                     return false;
                 }
             }
-            if (Args["enable_mpio"] != null || Args["disable_mpio"] != null)
+            if (args["enable_mpio"] != null || args["disable_mpio"] != null)
             {
-                return CheckRequiredArgsWithValues(Args, new List<string>() { "device_string" });
+                return CheckRequiredArgsWithValues(args, new List<string>() { "device_string" });
             }
             
 
             return true;
         }
 
-        static bool CheckRequiredArgsWithValues(CommandLineArguments pArgs, List<string> pRequiredArgs)
+        static bool CheckRequiredArgsWithValues(CommandLineArguments args, List<string> requiredArgs)
         {
             bool valid = true;
-            foreach (string ra in pRequiredArgs)
+            foreach (string ra in requiredArgs)
             {
-                if (String.IsNullOrEmpty(pArgs[ra]))
+                if (String.IsNullOrEmpty(args[ra]))
                 {
                     Console.Error.WriteLine("Missing " + ra);
                     valid = false;
