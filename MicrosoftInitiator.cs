@@ -1867,35 +1867,42 @@ namespace windiskhelper
         }
 
         /// <summary>
-        /// Remove volume mount points from disk devices
+        /// Create a single list of devices from multiple filters
         /// </summary>
         /// <param name="deviceList">Only operate on these devices</param>
         /// <param name="PortalAddress">Only operate on devices from iSCSI targets on this portal</param>
         /// <param name="targetList">Only operate on devices from these iSCSI targets</param>
-        public void RemoveMountpoints(List<string> deviceList = null, List<string> portalAddressList = null, List<string> targetList = null)
+        /// <returns>A HashSet of devices to operate on</returns>
+        HashSet<string> CreateDeviceList(List<string> deviceList = null, List<string> portalAddressList = null, List<string> targetList = null)
         {
-            // Filters
-            bool filter_devices = deviceList != null && deviceList.Count > 0;
-            bool filter_iscsi = (portalAddressList != null && portalAddressList.Count > 0) || (targetList != null && targetList.Count > 0);
-            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
-            if (filter_iscsi)
+            HashSet<string> filter_devices = new HashSet<string>();
+            if (deviceList != null)
+                filter_devices.UnionWith(deviceList);
+
+            if ((portalAddressList != null && portalAddressList.Count > 0) || (targetList != null && targetList.Count > 0))
             {
-                filtered_iscsi_device_list = GetFilteredDeviceList(portalAddressList, targetList);
-                if (filtered_iscsi_device_list.Count <= 0)
-                    return;
+                HashSet<string> filtered_iscsi_device_list = GetFilteredDeviceList(portalAddressList, targetList);
+                filter_devices.UnionWith(filtered_iscsi_device_list);
             }
+            return filter_devices;
+        }
 
-            Service vds_service = ConnectVdsService();
+        /// <summary>
+        /// Get a list of volumes
+        /// The volume list will not contain any system volumes, non-whitelisted volumes or blacklisted volumes
+        /// </summary>
+        /// <returns>A map of VDS disk => volume</returns>
+        Dictionary<AdvancedDisk, Volume> GetVdsVolumes(HashSet<string> filterDevices = null)
+        {
+            Dictionary<AdvancedDisk, Volume> disk2vol = new Dictionary<AdvancedDisk, Volume>();
+
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
-
             foreach (Pack disk_pack in vds_provider.Packs)
             {
-                bool match = false;
-                string dev_name = "";
-
-                // Make sure this pack contains disks that meet the filter criteria
+                AdvancedDisk matched_disk = null;
                 foreach (AdvancedDisk disk in disk_pack.Disks)
                 {
+                    string dev_name = disk.Name.Replace("?", ".");
                     if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
                         IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
                         !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
@@ -1905,30 +1912,70 @@ namespace windiskhelper
                         break;
                     }
 
-                    dev_name = disk.Name.Replace("?", ".");
-                    if (filter_devices && !deviceList.Contains(dev_name))
-                        break;
-                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
+                    if (filterDevices != null && filterDevices.Contains(dev_name))
                         break;
 
-                    match = true;
+                    matched_disk = disk;
                 }
-                if (!match)
+                if (matched_disk == null)
                     continue;
-
-                // Unmount the volumes
                 foreach (Volume vol in disk_pack.Volumes)
                 {
-                    if (IsSystemVolume(vol))
-                        break;
-
-                    foreach (string mount_point in vol.AccessPaths)
-                    {
-                        Logger.Info("Removing access path " + mount_point + " from " + dev_name);
-                        vol.DeleteAccessPath(mount_point, true);
-                    }
-                    vol.Refresh();
+                    disk2vol.Add(matched_disk, vol);
+                    break;
                 }
+            }
+            return disk2vol;
+        }
+
+        List<AdvancedDisk> GetVdsDisks(HashSet<string> filterDevices = null)
+        {
+            List<AdvancedDisk> disk_list = new List<AdvancedDisk>();
+            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
+            foreach (Pack disk_pack in vds_provider.Packs)
+            {
+                foreach (AdvancedDisk disk in disk_pack.Disks)
+                {
+                    string dev_name = disk.Name.Replace("?", ".");
+                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
+                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
+                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
+                                                                        // Skip disks that have been deleted but not cleaned up yet
+                    {
+                        Logger.Debug("Skipping device " + dev_name);
+                        continue;
+                    }
+
+                    if (filterDevices != null && filterDevices.Contains(dev_name))
+                        continue;
+
+                    disk_list.Add(disk);
+                }
+            }
+            return disk_list;
+        }
+
+        /// <summary>
+        /// Remove volume mount points from disk devices
+        /// </summary>
+        /// <param name="deviceList">Only operate on these devices</param>
+        /// <param name="PortalAddress">Only operate on devices from iSCSI targets on this portal</param>
+        /// <param name="targetList">Only operate on devices from these iSCSI targets</param>
+        public void RemoveMountpoints(List<string> deviceList = null, List<string> portalAddressList = null, List<string> targetList = null)
+        {
+            HashSet<string> filter_devices = CreateDeviceList(deviceList, portalAddressList, targetList);
+            if (filter_devices.Count() <= 0)
+                return;
+
+            Service vds_service = ConnectVdsService();
+            foreach (Volume vol in GetVdsVolumes(filter_devices).Values)
+            {
+                foreach (string mount_point in vol.AccessPaths)
+                {
+                    Logger.Info("Removing access path " + mount_point + " from " + vol.Label);
+                    vol.DeleteAccessPath(mount_point, true);
+                }
+                vol.Refresh();
             }
             vds_service.CleanupObsoleteMountPoints();
         }
@@ -2060,93 +2107,42 @@ namespace windiskhelper
         /// <param name="forceUnmount">Forceably unmount even if the device is in use</param>
         public void UnmountAndOfflineDisks(List<string> deviceList = null, List<string> portalAddressList = null, List<string> targetList = null, bool forceUnmount = false)
         {
-            // Filters
-            bool filter_devices = deviceList != null && deviceList.Count > 0;
-            bool filter_iscsi = (portalAddressList != null && portalAddressList.Count > 0) || (targetList != null && targetList.Count > 0);
-            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
-            if (filter_iscsi)
+            HashSet<string> filter_devices = CreateDeviceList(deviceList, portalAddressList, targetList);
+            if (filter_devices.Count() <= 0)
+                return;
+
+            // Unmount the volumes
+            Service vds_service = ConnectVdsService();
+            foreach (Volume vol in GetVdsVolumes(filter_devices).Values)
             {
-                filtered_iscsi_device_list = GetFilteredDeviceList(portalAddressList, targetList);
-                if (filtered_iscsi_device_list.Count <= 0)
-                    return;
+                if (vol.IsMounted)
+                {
+                    Logger.Debug("Unmounting volume " + vol.Label);
+                    try
+                    {
+                        vol.Dismount(forceUnmount, false);
+                    }
+                    catch (VdsException e)
+                    {
+                        throw VdsExceptionToInitiatorException(e);
+                    }
+                }
             }
 
-            Service vds_service = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
-
-            // Go through disk packs and find disks
-            foreach (Pack disk_pack in vds_provider.Packs)
+            // Offline the disks
+            foreach (AdvancedDisk disk in GetVdsDisks(filter_devices))
             {
-                string dev_name = "";
-                bool skip = false;
-                foreach (AdvancedDisk disk in disk_pack.Disks)
+                if (disk.Status == DiskStatus.Online)
                 {
-                    dev_name = disk.Name.Replace("?", ".");
-
-                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
-                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
-                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
+                    string dev_name = disk.Name.Replace("?", ".");
+                    try
                     {
-                        Logger.Debug("Skipping device " + dev_name);
-                        skip = true;
-                        break;
+                        Logger.Debug("Offlining " + dev_name);
+                        disk.Offline();
                     }
-
-                    if (filter_devices && !deviceList.Contains(dev_name))
+                    catch (VdsException e)
                     {
-                        skip = true;
-                        break;
-                    }
-                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
-                    {
-                        skip = true;
-                        break;
-                    }
-                    break;
-                }
-                if (skip)
-                    continue;
-
-                // Unmount the volume
-                foreach (Volume vol in disk_pack.Volumes)
-                {
-                    if (IsSystemVolume(vol))
-                    {
-                        Logger.Debug("Skipping volume " + vol.Label + " because it is a system volume");
-                        skip = true;
-                        break;
-                    }
-
-                    if (vol.IsMounted)
-                    {
-                        Logger.Debug("Unmounting volume " + vol.Label + " (disk " + dev_name + ")");
-                        try
-                        {
-                            vol.Dismount(forceUnmount, false);
-                        }
-                        catch (VdsException e)
-                        {
-                            throw VdsExceptionToInitiatorException(e);
-                        }
-                    }
-                }
-                if (skip)
-                    continue;
-
-                // Offline the disk
-                foreach (AdvancedDisk disk in disk_pack.Disks)
-                {
-                    if (disk.Status == DiskStatus.Online)
-                    {
-                        try
-                        {
-                            Logger.Debug("Offlining " + dev_name);
-                            disk.Offline();
-                        }
-                        catch (VdsException e)
-                        {
-                            throw VdsExceptionToInitiatorException(e);
-                        }
+                        throw VdsExceptionToInitiatorException(e);
                     }
                 }
             }
@@ -2160,22 +2156,15 @@ namespace windiskhelper
         /// <param name="targetList">Only operate on devices from these iSCSI targets</param>
         public void OnlineDisks(List<string> deviceList = null, List<string> portalAddressList = null, List<string> targetList = null)
         {
-            // Filters
-            bool filter_devices = deviceList != null && deviceList.Count > 0;
-            bool filter_iscsi = (portalAddressList != null && portalAddressList.Count > 0) || (targetList != null && targetList.Count > 0);
-            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
-            if (filter_iscsi)
-            {
-                filtered_iscsi_device_list = GetFilteredDeviceList(portalAddressList, targetList);
-                if (filtered_iscsi_device_list.Count <= 0)
-                    return;
-            }
+            HashSet<string> filter_devices = CreateDeviceList(deviceList, portalAddressList, targetList);
+            if (filter_devices.Count() <= 0)
+                return;
 
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
+            bool refresh_needed = false;
 
             // Find brand new disks and add them to VDS
-            bool refresh_needed = false;
             foreach (AdvancedDisk disk in vds_service.UnallocatedDisks)
             {
                 string dev_name = disk.Name.Replace("?", ".");
@@ -2183,15 +2172,12 @@ namespace windiskhelper
                 if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
                     IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
                     !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
-                                                                    // Skip disks that have been deleted but not cleaned up yet
                 {
                     Logger.Debug("Skipping device " + dev_name);
                     continue;
                 }
 
-                if (filter_devices && !deviceList.Contains(dev_name))
-                    continue;
-                if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
+                if (filter_devices.Contains(dev_name))
                     continue;
 
                 if (disk.Status != DiskStatus.Online)
@@ -2227,49 +2213,36 @@ namespace windiskhelper
             if (refresh_needed)
                 vds_provider.Refresh();
 
-            // Go through disk packs and find disks
-            foreach (Pack disk_pack in vds_provider.Packs)
+            // Find existing disks and mark them online/readwrite
+            foreach (AdvancedDisk disk in GetVdsDisks(filter_devices))
             {
-                foreach (AdvancedDisk disk in disk_pack.Disks)
+                string dev_name = disk.Name.Replace("?", ".");
+
+                // Online the disk
+                if (disk.Status != DiskStatus.Online)
                 {
-                    string dev_name = disk.Name.Replace("?", ".");
-
-                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
-                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
-                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
+                    Logger.Debug("Setting " + dev_name + " online");
+                    try
                     {
-                        Logger.Debug("Skipping device " + dev_name);
-                        continue;
+                        disk.Online();
                     }
-
-                    if (filter_devices && !deviceList.Contains(dev_name))
-                        continue;
-                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
-                        continue;
-
-                    if (disk.Status != DiskStatus.Online)
+                    catch
                     {
-                        Logger.Debug("Setting " + dev_name + " online");
-                        try
-                        {
-                            disk.Online();
-                        }
-                        catch
-                        {
-                            Logger.Warn("Could not online " + dev_name);
-                        }
+                        Logger.Warn("Could not online " + dev_name);
                     }
-                    if ((disk.Flags & DiskFlags.ReadOnly) == DiskFlags.ReadOnly)
+                }
+
+                // Make the disk ReadWrite
+                if ((disk.Flags & DiskFlags.ReadOnly) == DiskFlags.ReadOnly)
+                {
+                    Logger.Debug("Setting " + dev_name + " to RW");
+                    try
                     {
-                        Logger.Debug("Setting " + dev_name + " to RW");
-                        try
-                        {
-                            disk.ClearFlags(DiskFlags.ReadOnly);
-                        }
-                        catch
-                        {
-                            Logger.Warn("Could not clear RO flag on " + dev_name);
-                        }
+                        disk.ClearFlags(DiskFlags.ReadOnly);
+                    }
+                    catch
+                    {
+                        Logger.Warn("Could not clear RO flag on " + dev_name);
                     }
                 }
             }
@@ -2284,20 +2257,14 @@ namespace windiskhelper
         /// <param name="relabelVolumes">Update the volume label to match the device/volume name (snapshots/clones)</param>
         public void PartitionAndFormatDisks(List<string> deviceList = null, List<string> portalAddressList = null, List<string> targetList = null, bool relabelVolumes = false)
         {
-            // Filters
-            bool filter_devices = deviceList != null && deviceList.Count > 0;
-            bool filter_iscsi = (portalAddressList != null && portalAddressList.Count > 0) || (targetList != null && targetList.Count > 0);
-            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
-            if (filter_iscsi)
-            {
-                filtered_iscsi_device_list = GetFilteredDeviceList(portalAddressList, targetList);
-                if (filtered_iscsi_device_list.Count <= 0)
-                    return;
-            }
-            Dictionary<string, string> iscsi_map = GetDeviceToIscsiVolumeMap();
+            HashSet<string> filter_devices = CreateDeviceList(deviceList, portalAddressList, targetList);
+            if (filter_devices.Count() <= 0)
+                return;
 
-            // Make sure disks are onlined/RW first
+            // Make sure disks are online first
             OnlineDisks(deviceList, portalAddressList, targetList);
+
+            Dictionary<string, string> iscsi_map = GetDeviceToIscsiVolumeMap();
 
             Service vds_service = ConnectVdsService();
             SoftwareProvider vds_provider = ConnectVdsProviderBasic();
@@ -2320,9 +2287,7 @@ namespace windiskhelper
                         continue;
                     }
 
-                    if (filter_devices && !deviceList.Contains(dev_name))
-                        break;
-                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
+                    if (filter_devices.Contains(dev_name))
                         break;
 
                     selected_disk = true;
@@ -2451,96 +2416,60 @@ namespace windiskhelper
         /// <param name="forceMountPoints">Remove any drive letters and only use mount points</param>
         public void MountpointDisks(List<string> deviceList = null, List<string> portalAddressList = null, List<string> targetList = null,bool forceMountPoints = false)
         {
-            // Filters
-            bool filter_devices = deviceList != null && deviceList.Count > 0;
-            bool filter_iscsi = (portalAddressList != null && portalAddressList.Count > 0) || (targetList != null && targetList.Count > 0);
-            HashSet<string> filtered_iscsi_device_list = new HashSet<string>();
-            if (filter_iscsi)
-            {
-                filtered_iscsi_device_list = GetFilteredDeviceList(portalAddressList, targetList);
-                if (filtered_iscsi_device_list.Count <= 0)
-                    return;
-            }
+            HashSet<string> filter_devices = CreateDeviceList(deviceList, portalAddressList, targetList);
+            if (filter_devices.Count() <= 0)
+                return;
+
             Dictionary<string, string> iscsi_map = GetDeviceToIscsiVolumeMap();
 
-            Service vds_service = ConnectVdsService();
-            SoftwareProvider vds_provider = ConnectVdsProviderBasic();
-
-            foreach (Pack disk_pack in vds_provider.Packs)
+            Dictionary<AdvancedDisk, Volume> volume_map = GetVdsVolumes(filter_devices);
+            foreach (AdvancedDisk disk in volume_map.Keys)
             {
-                bool match = false;
-                string dev_name = "";
-
-                // Make sure this pack contains appropriate disks that meet the filter criteria
-                foreach (AdvancedDisk disk in disk_pack.Disks)
-                {
-                    dev_name = disk.Name.Replace("?", ".");
-                    if (!IsStillAttached(disk) ||                       // Skip disks that have been deleted but not cleaned up yet
-                        IsSystemDisk(disk) ||                           // Skip boot, system, pagefile, etc. disks
-                        !IsWhitelisted(disk) || IsBlacklisted(disk))    // Skip drives based on whitelist/blacklist
-                    {
-                        Logger.Debug("Skipping device " + dev_name);
-                        break;
-                    }
-
-                    if (filter_devices && !deviceList.Contains(dev_name))
-                        break;
-                    if (filter_iscsi && !filtered_iscsi_device_list.Contains(dev_name))
-                        break;
-
-                    match = true;
-                }
-                if (!match)
-                    continue;
-
+                string dev_name = disk.Name.Replace("?", ".");
                 string volume_name = "";
                 if (iscsi_map.Keys.Contains(dev_name))
                     volume_name = iscsi_map[dev_name];
                 else
                     volume_name = dev_name.Substring(4);
 
-                // Make sure all the volumes in this pack have a mount point
-                foreach (Volume vol in disk_pack.Volumes)
+                Volume vol = volume_map[disk];
+                if (!vol.IsMounted)
                 {
-                    if (!vol.IsMounted)
-                    {
-                        vol.Mount();
-                    }
+                    vol.Mount();
+                }
 
-                    if (forceMountPoints)
+                if (forceMountPoints)
+                {
+                    // If this option is set, forceably remove drive letters and replace with folder mount points
+                    // This usually is only relevant when Windows automounts a clone of another volume
+                    vol.Refresh();
+                    foreach (string mount_point in vol.AccessPaths)
                     {
-                        // If this option is set, forceably remove drive letters and replace with folder mount points
-                        // This usually is only relevant when Windows automounts a clone of another volume
-                        vol.Refresh();
-                        foreach (string mount_point in vol.AccessPaths)
+                        // Mount points in this list are simple strings - 
+                        // either drive letters:
+                        //   J:\
+                        // or folders:
+                        //   C:\mnt\volume1
+
+                        // Remove any mount points that are just drive letters
+                        if (mount_point.Length < 4)
                         {
-                            // Mount points in this list are simple strings - 
-                            // either drive letters:
-                            //   J:\
-                            // or folders:
-                            //   C:\mnt\volume1
-
-                            // Remove any mount points that are just drive letters
-                            if (mount_point.Length < 4)
-                            {
-                                Logger.Debug("Removing mount point " + mount_point + " from " + volume_name);
-                                vol.DeleteAccessPath(mount_point, true);
-                            }
+                            Logger.Debug("Removing mount point " + mount_point + " from " + volume_name);
+                            vol.DeleteAccessPath(mount_point, true);
                         }
                     }
+                }
 
-                    if (vol.AccessPaths.Count <= 0)
-                    {
-                        string mount_point = @"C:\mnt\" + volume_name + @"\";
-                        Logger.Info("Mounting volume '" + volume_name + "' at '" + mount_point + "'");
+                if (vol.AccessPaths.Count <= 0)
+                {
+                    string mount_point = @"C:\mnt\" + volume_name + @"\";
+                    Logger.Info("Mounting volume '" + volume_name + "' at '" + mount_point + "'");
 
-                        // Create the mount point
-                        Directory.CreateDirectory(mount_point);
+                    // Create the mount point
+                    Directory.CreateDirectory(mount_point);
 
-                        // Mount the volume
-                        vol.AddAccessPath(mount_point);
-                    }
-                    break; // Assume single partition per volume
+                    // Mount the volume
+                    vol.AddAccessPath(mount_point);
                 }
             }
         }
